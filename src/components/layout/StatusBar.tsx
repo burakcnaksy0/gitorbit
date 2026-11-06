@@ -141,13 +141,15 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                 id="statusbar-push"
                 type="button"
                 onClick={onPushClick}
-                disabled={busy || currentRepo.missing || currentRepo.ahead === 0}
+                disabled={
+                  busy || currentRepo.missing || (hasUpstream && currentRepo.ahead === 0)
+                }
                 className="flex items-center gap-1 text-slate-400 hover:text-sky-300 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 rounded px-1 disabled:opacity-60 disabled:cursor-not-allowed"
                 title={
-                  currentRepo.ahead === 0
-                    ? "Push edilecek commit yok"
-                    : !hasUpstream
-                      ? `Dalınızı uzak depoya yayınlayın (Push -u) — ${currentRepo.ahead} commit bekliyor`
+                  !hasUpstream
+                    ? `Dalınızı uzak depoda yayınlayın (Push -u): ${currentRepo.name}/${currentRepo.currentBranch ?? "?"}`
+                    : currentRepo.ahead === 0
+                      ? "Push edilecek commit yok"
                       : `Dışa Aktar (Push) — ${currentRepo.ahead} yerel commit gönderilmeyi bekliyor`
                 }
               >

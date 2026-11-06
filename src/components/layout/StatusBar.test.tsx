@@ -95,7 +95,7 @@ describe("StatusBar component (Faz 5 Remote & Operation State)", () => {
   });
 
   it("disables push with nothing to push and pull without upstream", () => {
-    const repo: MockRepository = { ...baseRepo, ahead: 0, upstream: undefined };
+    const repo: MockRepository = { ...baseRepo, ahead: 0, upstream: "origin/main" };
 
     render(
       <StatusBar
@@ -107,6 +107,25 @@ describe("StatusBar component (Faz 5 Remote & Operation State)", () => {
     );
 
     expect(screen.getByRole("button", { name: /Dışa Aktar/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /İçe Aktar/i })).toBeDisabled();
+  });
+
+  it("enables push for a brand-new branch without upstream (publish)", () => {
+    const repo: MockRepository = { ...baseRepo, ahead: 0, upstream: undefined };
+
+    render(
+      <StatusBar
+        currentRepo={repo}
+        onSyncClick={vi.fn()}
+        onPullClick={vi.fn()}
+        onPushClick={vi.fn()}
+      />
+    );
+
+    const pushBtn = screen.getByRole("button", { name: /Dışa Aktar/i });
+    expect(pushBtn).toBeEnabled();
+    expect(pushBtn).toHaveAttribute(
+      "title",
+      expect.stringMatching(/uzak depoda yayınlayın/i)
+    );
   });
 });
