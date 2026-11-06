@@ -1,6 +1,8 @@
 import React from "react";
 import {
   AlertTriangle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
   CheckCircle2,
   GitBranch,
   RefreshCw,
@@ -13,7 +15,11 @@ import type { GitEnvironment } from "../../types/ipc";
 interface StatusBarProps {
   currentRepo: RepositorySummary | null;
   onSyncClick: () => void;
+  onPullClick?: () => void;
+  onPushClick?: () => void;
   isSyncing?: boolean;
+  isPulling?: boolean;
+  isPushing?: boolean;
   environment?: GitEnvironment | null;
   appVersion?: string | null;
 }
@@ -55,13 +61,19 @@ function getOperationStateLabel(
 export const StatusBar: React.FC<StatusBarProps> = ({
   currentRepo,
   onSyncClick,
+  onPullClick,
+  onPushClick,
   isSyncing = false,
+  isPulling = false,
+  isPushing = false,
   environment = null,
   appVersion = null,
 }) => {
   const opState = getOperationStateLabel(currentRepo?.operationState);
   const hasBranch = Boolean(currentRepo?.currentBranch);
   const isDetached = hasBranch && currentRepo!.currentBranch!.startsWith("HEAD");
+  const busy = isSyncing || isPulling || isPushing;
+  const hasUpstream = Boolean(currentRepo?.upstream);
 
   return (
     <footer className="h-7 border-t border-slate-800 bg-slate-900/95 px-3 flex items-center justify-between text-[11px] text-slate-400 select-none shrink-0 z-10">
@@ -83,7 +95,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             <button
               type="button"
               onClick={onSyncClick}
-              disabled={isSyncing || currentRepo.missing}
+              disabled={busy || currentRepo.missing}
               className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 rounded px-1 disabled:opacity-60 disabled:cursor-not-allowed"
               title="Remote durumunu yenile (Fetch)"
             >
@@ -94,6 +106,62 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                 {isSyncing ? "Senkronize Ediliyor..." : "Senkronize Et"}
               </span>
             </button>
+
+            {onPullClick && (
+              <button
+                id="statusbar-pull"
+                type="button"
+                onClick={onPullClick}
+                disabled={busy || currentRepo.missing || !hasUpstream}
+                className="flex items-center gap-1 text-slate-400 hover:text-emerald-300 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 rounded px-1 disabled:opacity-60 disabled:cursor-not-allowed"
+                title={
+                  !hasUpstream
+                    ? "Bu dalın izlediği bir remote yok (NO_UPSTREAM)"
+                    : currentRepo.behind > 0
+                      ? `İçe Aktar (Pull) — uzakta ${currentRepo.behind} yeni commit var`
+                      : "İçe Aktar (Pull)"
+                }
+              >
+                <ArrowDownToLine
+                  className={`w-3 h-3 text-slate-500 ${isPulling ? "animate-spin text-emerald-400" : ""}`}
+                />
+                <span className="hidden sm:inline">
+                  {isPulling ? "İçe Aktarılıyor..." : "İçe Aktar"}
+                </span>
+                {currentRepo.behind > 0 && !isPulling && (
+                  <span className="text-emerald-400 tabular-nums">
+                    ↓{currentRepo.behind}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {onPushClick && (
+              <button
+                id="statusbar-push"
+                type="button"
+                onClick={onPushClick}
+                disabled={busy || currentRepo.missing || currentRepo.ahead === 0}
+                className="flex items-center gap-1 text-slate-400 hover:text-sky-300 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 rounded px-1 disabled:opacity-60 disabled:cursor-not-allowed"
+                title={
+                  currentRepo.ahead === 0
+                    ? "Push edilecek commit yok"
+                    : !hasUpstream
+                      ? `Dalınızı uzak depoya yayınlayın (Push -u) — ${currentRepo.ahead} commit bekliyor`
+                      : `Dışa Aktar (Push) — ${currentRepo.ahead} yerel commit gönderilmeyi bekliyor`
+                }
+              >
+                <ArrowUpFromLine
+                  className={`w-3 h-3 text-slate-500 ${isPushing ? "animate-spin text-sky-400" : ""}`}
+                />
+                <span className="hidden sm:inline">
+                  {isPushing ? "Dışa Aktarılıyor..." : "Dışa Aktar"}
+                </span>
+                {currentRepo.ahead > 0 && !isPushing && (
+                  <span className="text-sky-400 tabular-nums">↑{currentRepo.ahead}</span>
+                )}
+              </button>
+            )}
 
             {opState && (
               <span

@@ -66,4 +66,47 @@ describe("StatusBar component (Faz 5 Remote & Operation State)", () => {
 
     expect(screen.getByText("Rebase Devam Ediyor")).toBeInTheDocument();
   });
+
+  it("shows pull/push actions with ahead/behind counts and triggers handlers", () => {
+    const onPull = vi.fn();
+    const onPush = vi.fn();
+    const repo: MockRepository = { ...baseRepo, upstream: "origin/main" };
+
+    render(
+      <StatusBar
+        currentRepo={repo}
+        onSyncClick={vi.fn()}
+        onPullClick={onPull}
+        onPushClick={onPush}
+      />
+    );
+
+    const pullBtn = screen.getByRole("button", { name: /İçe Aktar/i });
+    const pushBtn = screen.getByRole("button", { name: /Dışa Aktar/i });
+    expect(pullBtn).toBeEnabled();
+    expect(pushBtn).toBeEnabled();
+    expect(pullBtn).toHaveTextContent("↓1");
+    expect(pushBtn).toHaveTextContent("↑2");
+
+    fireEvent.click(pullBtn);
+    fireEvent.click(pushBtn);
+    expect(onPull).toHaveBeenCalledTimes(1);
+    expect(onPush).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables push with nothing to push and pull without upstream", () => {
+    const repo: MockRepository = { ...baseRepo, ahead: 0, upstream: undefined };
+
+    render(
+      <StatusBar
+        currentRepo={repo}
+        onSyncClick={vi.fn()}
+        onPullClick={vi.fn()}
+        onPushClick={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: /Dışa Aktar/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /İçe Aktar/i })).toBeDisabled();
+  });
 });

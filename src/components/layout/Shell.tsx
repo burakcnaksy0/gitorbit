@@ -27,6 +27,8 @@ import {
   repositoryAdd,
   repositoryClone,
   repositoryFetch,
+  repositoryPull,
+  repositoryPush,
   repositoryGetHistory,
   repositoryGetStatus,
   repositoryList,
@@ -92,6 +94,8 @@ export const Shell: React.FC = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isDarkTheme, setIsDarkTheme] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
+  const [isPushing, setIsPushing] = useState(false);
 
   // Backend state -----------------------------------------------------------
   const [repositories, setRepositories] = useState<RepositoryRecord[]>([]);
@@ -342,6 +346,41 @@ export const Shell: React.FC = () => {
     }
   }, [currentRepoId, showError]);
 
+  // Pull: backend refuses destructive/unsafe states (dirty tree, conflicts)
+  // with typed errors — surfaced verbatim through the notice modal.
+  const handlePull = useCallback(async () => {
+    if (!currentRepoId) return;
+    setIsPulling(true);
+    try {
+      const status = await repositoryPull(currentRepoId);
+      setStatuses((prev) => ({ ...prev, [currentRepoId]: status }));
+      // New commits landed locally — refresh summaries (last commit, branch).
+      await loadRepositories();
+    } catch (err) {
+      showError("İçe Aktar (Pull)", err);
+    } finally {
+      setIsPulling(false);
+    }
+  }, [currentRepoId, loadRepositories, showError]);
+
+  // Push: never auto-forces; non-fast-forward arrives as REMOTE_REJECTED.
+  // A branch without upstream is published with --set-upstream (origin/<branch>),
+  // mirroring the "Publish Branch" convention instead of failing with NO_UPSTREAM.
+  const handlePush = useCallback(async () => {
+    if (!currentRepoId) return;
+    setIsPushing(true);
+    try {
+      const publish = !currentRepo?.upstream;
+      const status = await repositoryPush(currentRepoId, null, null, false, publish);
+      setStatuses((prev) => ({ ...prev, [currentRepoId]: status }));
+      await loadRepositories();
+    } catch (err) {
+      showError("Dışa Aktar (Push)", err);
+    } finally {
+      setIsPushing(false);
+    }
+  }, [currentRepoId, currentRepo, loadRepositories, showError]);
+
   const handleSaveSettings = useCallback(async (update: AppSettingsUpdate) => {
     const next = await settingsUpdate(update);
     setSettings(next);
@@ -517,7 +556,11 @@ export const Shell: React.FC = () => {
         environment={environment}
         appVersion={appInfo?.version ?? null}
         isSyncing={isSyncing}
+        isPulling={isPulling}
+        isPushing={isPushing}
         onSyncClick={() => void handleSync()}
+        onPullClick={() => void handlePull()}
+        onPushClick={() => void handlePush()}
       />
 
       <ActionNoticeModal
