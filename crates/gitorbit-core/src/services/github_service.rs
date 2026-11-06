@@ -567,6 +567,32 @@ impl GitHubService {
     // Repository API
     // -----------------------------------------------------------------------
 
+    /// Access token of a connected account (read from the OS keyring, held
+    /// only in-process). Used by callers that must run git operations as this
+    /// account — the token is never returned to the frontend or persisted.
+    pub fn access_token(&self, db: &Database, account_id: &str) -> Result<String, CommandError> {
+        let (_, token) = self.account_with_token(db, account_id)?;
+        Ok(token)
+    }
+
+    /// Push kimliği çözümü: remote URL'sinin owner'ı hangi bağlı hesabın
+    /// login'iyle eşleşiyorsa o hesabın token'ı döner. Eşleşme yoksa ya da
+    /// keyring okunamazsa `Ok(None)` — push sistem kimliğiyle denenir.
+    pub fn token_for_repo_owner(
+        &self,
+        db: &Database,
+        owner: &str,
+    ) -> Result<Option<String>, CommandError> {
+        let accounts = db.with_conn(|conn| GitHubAccountDao::list(conn))?;
+        let Some(account) = accounts
+            .into_iter()
+            .find(|a| a.login.eq_ignore_ascii_case(owner))
+        else {
+            return Ok(None);
+        };
+        Ok(self.account_with_token(db, &account.id).ok().map(|(_, t)| t))
+    }
+
     /// Lists repositories for the given account with pagination.
     /// `page` is 1-indexed; `per_page` is clamped to 1–100.
     /// Loads the DB account record and its token from the OS credential store.

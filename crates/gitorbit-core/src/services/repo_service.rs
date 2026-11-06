@@ -588,10 +588,11 @@ impl RepositoryService {
         branch: Option<&str>,
         force: bool,
         set_upstream: bool,
+        access_token: Option<&str>,
     ) -> Result<GitStatus, CommandError> {
         let repo = Self::get_repository(db, repo_id)?;
         let path = Path::new(&repo.canonical_path);
-        let status = GitRemoteManager::push(path, remote, branch, force, set_upstream)?;
+        let status = GitRemoteManager::push(path, remote, branch, force, set_upstream, access_token)?;
         if let Some(ref b) = status.branch {
             let _ = db.with_conn(|conn| {
                 RepositoryDao::update_current_branch(conn, repo_id, Some(b.as_str()))

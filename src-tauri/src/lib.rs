@@ -416,6 +416,9 @@ fn repository_push(
 ) -> CmdResult<GitStatus> {
     let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
     with_db(&state, |db| {
+        // Bağlı hesabın token'ı ile push: remote owner'ı bir hesap login'iyle
+        // eşleşirse kimlik sistem git yerine o hesabın OAuth token'ı olur.
+        let token = owner_push_token(&state, db, &repo_id);
         RepositoryService::push(
             db,
             &repo_id,
@@ -423,8 +426,29 @@ fn repository_push(
             branch.as_deref(),
             force.unwrap_or(false),
             set_upstream.unwrap_or(false),
+            token.as_deref(),
         )
     })
+}
+
+/// Çözüm: repo'nun push yapacağı remote'un owner'ı ↔ bağlı GitHub hesabı login'i.
+/// Uygun token bulunamazsa None döner ve push mevcut sistem kimliğiyle denenir.
+fn owner_push_token(state: &AppState, db: &Database, repo_id: &str) -> Option<String> {
+    let record = RepositoryService::get_repository(db, repo_id).ok()?;
+    let remotes = GitRemoteManager::list_remotes(std::path::Path::new(&record.canonical_path))
+        .ok()
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    let url = remotes
+        .iter()
+        .find(|r| r.name == "origin")
+        .and_then(|r| r.push_url.as_ref().or(r.fetch_url.as_ref()))?;
+    let (owner, https) = GitRemoteManager::parse_remote_owner(url)?;
+    if !https {
+        return None; // SSH remote: ~/.ssh/config kimliği zaten doğru hesabı seçer
+    }
+    state.github.token_for_repo_owner(db, &owner).ok().flatten()
 }
 
 /// Lists all configured remotes for a repository.
@@ -624,8 +648,18 @@ fn github_publish_repository(
         )));
     }
 
-    // 4. Best-effort initial push (never forces).
-    let (pushed, warning) = match RepositoryService::push(&db, &repo_id, None, None, false, true) {
+    // 4. Best-effort initial push (never forces). Hesabın token'ı ile:
+    // origin HTTPS ise kimlik doğrudan bu hesap olur; SSH ise config devrede.
+    let push_token = state.github.access_token(&db, &account_id).ok();
+    let (pushed, warning) = match RepositoryService::push(
+        &db,
+        &repo_id,
+        None,
+        None,
+        false,
+        true,
+        push_token.as_deref(),
+    ) {
         Ok(_) => (true, None),
         Err(e) => (false, Some(e.message)),
     };

@@ -78,9 +78,16 @@ fn test_ac1_bare_remote_push_fetch_pull_sync() {
     assert_eq!(remotes[0].name, "origin");
 
     // Push with set_upstream = true
-    let push_status =
-        RepositoryService::push(&db, &record_a.id, Some("origin"), Some("main"), false, true)
-            .unwrap();
+    let push_status = RepositoryService::push(
+        &db,
+        &record_a.id,
+        Some("origin"),
+        Some("main"),
+        false,
+        true,
+        None,
+    )
+    .unwrap();
 
     assert_eq!(push_status.upstream, Some("origin/main".to_string()));
     assert_eq!(push_status.ahead, 0);
@@ -185,6 +192,7 @@ fn test_ac2_non_fast_forward_push_rejected_never_auto_forced() {
         Some("main"),
         false,
         false,
+        None,
     )
     .unwrap_err();
 
@@ -370,7 +378,7 @@ fn test_ac5_no_upstream_handling() {
     assert_eq!(pull_err.code, "NO_UPSTREAM");
 
     // 2. Push without upstream and without set_upstream should return NO_UPSTREAM
-    let push_err = RepositoryService::push(&db, &record.id, None, None, false, false).unwrap_err();
+    let push_err = RepositoryService::push(&db, &record.id, None, None, false, false, None).unwrap_err();
     assert_eq!(push_err.code, "NO_UPSTREAM");
 }
 

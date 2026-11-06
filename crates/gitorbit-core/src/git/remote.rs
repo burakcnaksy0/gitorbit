@@ -6,6 +6,12 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
+/// Geçici push credential helper'ı: git, `!` ile başlayan helper'ı shell'de
+/// çalıştırır; token yalnızca çocuğun ortamındaki GITORBIT_GH_TOKEN'dan okunur.
+/// Böylece token argv'ye, URL'e, .git/config'e veya loglara asla düşmez.
+const PUSH_TOKEN_HELPER: &str =
+    "!f() { echo username=x-access-token; echo \"password=$GITORBIT_GH_TOKEN\"; }; f";
+
 pub struct GitRemoteManager;
 
 impl GitRemoteManager {
@@ -301,6 +307,7 @@ impl GitRemoteManager {
         branch: Option<&str>,
         force: bool,
         set_upstream: bool,
+        access_token: Option<&str>,
     ) -> Result<GitStatus, CommandError> {
         let status_before = GitStatusParser::get_status(repo_dir)?;
 
@@ -356,10 +363,36 @@ impl GitRemoteManager {
         };
         args.push(&target_branch);
 
+        // Hesap token'i: yalnızca HTTPS remote'lar için geçici credential helper
+        // olarak enjekte edilir (süreç ortamında yaşar; diske, URL'e veya
+        // config'e ASLA yazılmaz). SSH remote'larında injection gerekmez —
+        // ~/.ssh/config kimliği kullanılır.
+        let mut envs: Vec<(&str, &str)> = vec![("GIT_TERMINAL_PROMPT", "0")];
+        if let Some(token) = access_token.filter(|t| !t.is_empty()) {
+            let is_https = Self::list_remotes(repo_dir)
+                .ok()
+                .and_then(|remotes| {
+                    remotes
+                        .into_iter()
+                        .find(|r| r.name == target_remote)
+                        .and_then(|r| r.push_url.or(r.fetch_url))
+                })
+                .and_then(|u| Self::parse_remote_owner(&u).map(|(_, https)| https))
+                .unwrap_or(false);
+            if is_https {
+                envs.push(("GITORBIT_GH_TOKEN", token));
+                envs.push(("GIT_CONFIG_COUNT", "2"));
+                envs.push(("GIT_CONFIG_KEY_0", "credential.helper"));
+                envs.push(("GIT_CONFIG_VALUE_0", "")); // stored helpers sıfırla
+                envs.push(("GIT_CONFIG_KEY_1", "credential.helper"));
+                envs.push(("GIT_CONFIG_VALUE_1", PUSH_TOKEN_HELPER));
+            }
+        }
+
         let output = GitAdapter::execute_with_env_and_timeout(
             repo_dir,
             &args,
-            &[("GIT_TERMINAL_PROMPT", "0")],
+            &envs,
             Some(Duration::from_secs(45)),
         )?;
 
@@ -384,6 +417,36 @@ impl GitRemoteManager {
         }
 
         GitStatusParser::get_status(repo_dir)
+    }
+
+    /// Parses the owner segment of a GitHub remote URL and whether the URL is
+    /// HTTPS (token push only applies to HTTPS). Accepted shapes:
+    /// `https://github.com/owner/repo(.git)`, `git@github.com:owner/repo.git`,
+    /// `git@<ssh-host-alias>:owner/repo.git`, `ssh://git@host/owner/repo(.git)`.
+    pub fn parse_remote_owner(url: &str) -> Option<(String, bool)> {
+        let url = url.trim();
+        let path = if let Some(rest) = url
+            .strip_prefix("https://")
+            .or_else(|| url.strip_prefix("http://"))
+        {
+            // host/owner/repo(.git)
+            rest.split_once('/')?.1
+        } else if let Some(rest) = url.strip_prefix("ssh://") {
+            // ssh://git@host/owner/repo
+            rest.split_once('/')?.1
+        } else if let Some(rest) = url.strip_prefix("git@") {
+            // git@host:owner/repo — host bir ssh alias'i de olabilir
+            rest.split_once(':')?.1
+        } else {
+            return None;
+        };
+        let mut segments = path.trim_matches('/').split('/');
+        let owner = segments.next()?.trim();
+        let repo = segments.next()?.trim();
+        if owner.is_empty() || repo.is_empty() {
+            return None;
+        }
+        Some((owner.to_string(), url.starts_with("http")))
     }
 
     /// Maps Git stderr output to structured, user-friendly CommandErrors.
@@ -434,5 +497,44 @@ impl GitRemoteManager {
             format!("{} işlemi başarısız oldu: {}", operation, trimmed),
             true,
         )
+    }
+}
+
+#[cfg(test)]
+mod remote_owner_tests {
+    use super::GitRemoteManager;
+
+    #[test]
+    fn parses_https_and_ssh_remote_shapes() {
+        let cases = [
+            ("https://github.com/acme/repo.git", "acme", true),
+            ("https://github.com/acme/repo", "acme", true),
+            ("git@github.com:acme/repo.git", "acme", false),
+            ("git@github-alt:acme/repo.git", "acme", false),
+            ("ssh://git@github.com/acme/repo.git", "acme", false),
+        ];
+        for (url, owner, https) in cases {
+            let (got_owner, got_https) = GitRemoteManager::parse_remote_owner(url)
+                .unwrap_or_else(|| panic!("parse failed: {url}"));
+            assert_eq!(got_owner, owner, "owner for {url}");
+            assert_eq!(got_https, https, "https flag for {url}");
+        }
+    }
+
+    #[test]
+    fn rejects_malformed_or_unrelated_urls() {
+        for url in [
+            "",
+            "not-a-url",
+            "https://github.com/onlyowner",
+            "https://github.com/",
+            "git@github.com:owneronly",
+            "file:///tmp/repo",
+        ] {
+            assert!(
+                GitRemoteManager::parse_remote_owner(url).is_none(),
+                "should reject: {url:?}"
+            );
+        }
     }
 }
