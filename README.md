@@ -167,4 +167,3 @@ v0.1.0, **bundle'sız çalıştırılabilir binary** olarak dağıtılır (`npm 
 ## 📜 Lisans
 
 Bu proje [MIT lisansı](LICENSE) altında yayınlanmıştır. Bağımlılık lisans uyumluluğu: `docs/LICENSE_INVENTORY.md`. Güvenlik sorunları için: `SECURITY.md`.
-# gitorbit
