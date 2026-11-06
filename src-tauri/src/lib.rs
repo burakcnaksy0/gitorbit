@@ -14,11 +14,12 @@ use gitorbit_core::services::{RepositoryService, SettingsService};
 use gitorbit_core::{
     AppInfo, AppSettings, AppSettingsUpdate, BranchComparison, BranchInfo, CloneResult,
     CommandError, CommitDetails, CommitResult, DeviceFlowSession, DiffOutput, GitEnvironment,
-    GitHubAccount, GitHubRepoPage, GitIdentity, GitStatus, HistoryOutput, PendingDeviceFlow,
-    PollResult, RemoteInfo, RepoLockRegistry, RepositoryDetails, RepositoryOperationState,
-    RepositoryRecord,
+    GitHubAccount, GitHubProfile, GitHubRepoPage, GitIdentity, GitStatus, HistoryOutput,
+    PendingDeviceFlow, PollResult, RemoteInfo, RepoLockRegistry, RepositoryDetails,
+    RepositoryOperationState, RepositoryRecord,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
@@ -32,8 +33,12 @@ pub struct AppState {
     pub db: Mutex<Database>,
     /// GitHub API service (device-flow OAuth + account management + repo listing).
     pub github: GitHubService,
-    /// In-progress device-flow session.  Kept in memory, NEVER serialised.
-    pub pending_device_flow: Mutex<Option<PendingDeviceFlow>>,
+    /// In-progress device-flow sessions, keyed by `session_token`.  Kept in
+    /// memory, NEVER serialised. A map (not a single slot) so that two login
+    /// attempts — e.g. GitHubView and SettingsView — never overwrite each
+    /// other's `device_code` (root cause of the spurious OAUTH_STATE_MISMATCH /
+    /// "authorization_pending forever" reports).
+    pub pending_device_flow: Mutex<HashMap<String, PendingDeviceFlow>>,
     /// Per-repository mutation locks (REPOSITORY_BUSY on contention).
     pub locks: RepoLockRegistry,
 }
@@ -44,7 +49,7 @@ impl AppState {
         Ok(Self {
             db: Mutex::new(db),
             github: GitHubService::new_real(),
-            pending_device_flow: Mutex::new(None),
+            pending_device_flow: Mutex::new(HashMap::new()),
             locks: RepoLockRegistry::new(),
         })
     }
@@ -444,11 +449,14 @@ fn repository_get_operation_state(
 fn github_begin_login(state: State<AppState>) -> CmdResult<DeviceFlowSession> {
     let (session, pending) = state.github.begin_device_flow().map_err(AppError::from)?;
 
-    let mut flow = state
+    let mut flows = state
         .pending_device_flow
         .lock()
         .map_err(|_| AppError::simple("INTERNAL_ERROR", "Oturum kilidi alınamadı.", false))?;
-    *flow = Some(pending);
+    // Opportunistic GC: drop sessions whose user never finished the browser step.
+    flows.retain(|_, p| !p.is_expired());
+    // Keyed insert: a second concurrent login never evicts the first one.
+    flows.insert(session.session_token.clone(), pending);
     Ok(session)
 }
 
@@ -466,41 +474,34 @@ fn github_poll_login(state: State<AppState>, session_token: String) -> CmdResult
         .lock()
         .map_err(|_| AppError::simple("DATABASE_ERROR", "Veritabanı kilidi alınamadı.", false))?;
 
-    let pending_result =
-        {
-            let flow = state.pending_device_flow.lock().map_err(|_| {
-                AppError::simple("INTERNAL_ERROR", "Oturum kilidi alınamadı.", false)
-            })?;
-            if flow.is_none() {
-                return Err(AppError::simple(
-                    "NO_ACTIVE_LOGIN",
-                    "Aktif giriş oturumu yok. Önce github_begin_login çağırın.",
-                    true,
-                ));
-            }
-            // Validate session token early without holding the MutexGuard across await
-            let p = flow.as_ref().unwrap();
-            if p.session_token != session_token {
-                return Err(AppError::from(CommandError::oauth_state_mismatch(
-                    "OAuth oturum belirteci eşleşmiyor.",
-                )));
-            }
-            drop(flow);
-            // Re-acquire to pass to poll_device_flow
-            let flow = state.pending_device_flow.lock().map_err(|_| {
-                AppError::simple("INTERNAL_ERROR", "Oturum kilidi alınamadı.", false)
-            })?;
-            state
-                .github
-                .poll_device_flow(&db, flow.as_ref().unwrap(), &session_token)
-                .map_err(AppError::from)?
-        };
+    // Take this session's pending flow out of the map. `PendingDeviceFlow` is
+    // not Clone, so we remove → poll → re-insert only if still pending. This
+    // also guarantees the session is dropped on success, expiry or denial.
+    let pending = {
+        let mut flows = state
+            .pending_device_flow
+            .lock()
+            .map_err(|_| AppError::simple("INTERNAL_ERROR", "Oturum kilidi alınamadı.", false))?;
+        flows.retain(|_, p| !p.is_expired());
+        flows.remove(&session_token).ok_or_else(|| {
+            AppError::simple(
+                "NO_ACTIVE_LOGIN",
+                "Aktif giriş oturumu yok veya süresi dolmuş. Önce github_begin_login çağırın.",
+                true,
+            )
+        })?
+    };
 
-    // Clear the pending flow on success
-    if matches!(pending_result, PollResult::Success { .. })
-        && let Ok(mut f) = state.pending_device_flow.lock()
+    let pending_result = state
+        .github
+        .poll_device_flow(&db, &pending, &session_token)
+        .map_err(AppError::from)?;
+
+    // Keep the session alive only while the user has not finished the browser step.
+    if matches!(pending_result, PollResult::Pending)
+        && let Ok(mut flows) = state.pending_device_flow.lock()
     {
-        *f = None;
+        flows.insert(session_token, pending);
     }
 
     Ok(pending_result)
@@ -534,6 +535,18 @@ fn github_list_repos(
         state
             .github
             .list_repos(db, &account_id, page.unwrap_or(1), per_page.unwrap_or(30))
+    })
+}
+
+/// Fetches the live public profile/overview (bio, counts, avatar…) for a
+/// connected account. Token stays in Rust; only public metadata is returned.
+#[tauri::command]
+fn github_get_account_profile(
+    state: State<AppState>,
+    account_id: String,
+) -> CmdResult<GitHubProfile> {
+    with_db(&state, |db| {
+        state.github.get_account_profile(db, &account_id)
     })
 }
 
@@ -740,6 +753,7 @@ pub fn run() {
             github_list_accounts,
             github_disconnect_account,
             github_list_repos,
+            github_get_account_profile,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

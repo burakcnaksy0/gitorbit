@@ -28,11 +28,14 @@ import {
   Loader2,
   Copy,
   Check,
+  Building2,
+  MapPin,
 } from "lucide-react";
 import type {
   AppError,
   DeviceFlowSession,
   GitHubAccount,
+  GitHubProfile,
   GitHubRepo,
   GitHubRepoPage,
 } from "../../types/ipc";
@@ -43,6 +46,7 @@ import {
   githubListAccounts,
   githubDisconnectAccount,
   githubListRepos,
+  githubGetAccountProfile,
 } from "../../lib/tauriCommands";
 
 // ---------------------------------------------------------------------------
@@ -53,6 +57,11 @@ type ViewState =
   | { kind: "accounts" }
   | { kind: "login-start"; session: DeviceFlowSession }
   | { kind: "login-polling"; session: DeviceFlowSession }
+  | {
+      kind: "profile";
+      account: GitHubAccount;
+      profile: GitHubProfile | null;
+    }
   | {
       kind: "repos";
       account: GitHubAccount;
@@ -95,6 +104,7 @@ function formatError(err: AppError): string {
 interface AccountCardProps {
   account: GitHubAccount;
   onViewRepos: (account: GitHubAccount) => void;
+  onViewProfile: (account: GitHubAccount) => void;
   onDisconnect: (account: GitHubAccount) => void;
   disconnecting: boolean;
 }
@@ -102,6 +112,7 @@ interface AccountCardProps {
 const AccountCard: React.FC<AccountCardProps> = ({
   account,
   onViewRepos,
+  onViewProfile,
   onDisconnect,
   disconnecting,
 }) => {
@@ -155,6 +166,16 @@ const AccountCard: React.FC<AccountCardProps> = ({
           Repolar
         </button>
 
+        <button
+          id={`view-profile-${account.id}`}
+          type="button"
+          onClick={() => onViewProfile(account)}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition-colors focus:outline-none focus:ring-1 focus:ring-slate-600 cursor-pointer"
+        >
+          <Building2 className="w-3.5 h-3.5" />
+          Profil
+        </button>
+
         {confirmDisconnect ? (
           <div className="flex gap-1.5">
             <button
@@ -194,6 +215,146 @@ const AccountCard: React.FC<AccountCardProps> = ({
           </button>
         )}
       </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Sub-component: ProfilePanel
+// ---------------------------------------------------------------------------
+
+interface ProfilePanelProps {
+  account: GitHubAccount;
+  profile: GitHubProfile | null;
+  loading: boolean;
+  error: string | null;
+  onBack: () => void;
+  onRetry: () => void;
+}
+
+function formatJoinDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("tr-TR", { year: "numeric", month: "long" });
+}
+
+const ProfileStat: React.FC<{ label: string; value: number }> = ({ label, value }) => (
+  <div className="flex flex-col items-center px-4 py-2 rounded-lg bg-slate-900/80 border border-slate-800 min-w-20">
+    <span className="text-lg font-bold text-white tabular-nums">
+      {value.toLocaleString("tr-TR")}
+    </span>
+    <span className="text-[10px] uppercase tracking-wide text-slate-500">{label}</span>
+  </div>
+);
+
+const ProfilePanel: React.FC<ProfilePanelProps> = ({
+  account,
+  profile,
+  loading,
+  error,
+  onBack,
+  onRetry,
+}) => {
+  const joined = formatJoinDate(profile?.created_at ?? null);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
+        <button
+          id="back-from-profile"
+          type="button"
+          onClick={onBack}
+          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors focus:outline-none cursor-pointer"
+          aria-label="Hesaplara dön"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <h2 className="text-sm font-semibold text-white">@{account.login} — Profil</h2>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="w-6 h-6 animate-spin text-sky-400" />
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-4">
+          <AlertCircle className="w-8 h-8 text-red-400 opacity-60" />
+          <p className="text-sm text-slate-400">{error}</p>
+          <button
+            id="retry-profile"
+            type="button"
+            onClick={onRetry}
+            className="text-xs text-sky-400 hover:text-sky-300 underline focus:outline-none cursor-pointer"
+          >
+            Tekrar dene
+          </button>
+        </div>
+      ) : profile ? (
+        <div className="rounded-xl bg-slate-900/60 border border-slate-800 p-6 space-y-5">
+          <div className="flex items-start gap-4">
+            {profile.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                alt={`${profile.login} avatar`}
+                className="w-20 h-20 rounded-full border-2 border-slate-700 object-cover"
+              />
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center">
+                <GithubIcon className="w-9 h-9 text-slate-400" />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-lg font-bold text-white truncate">
+                {profile.name || profile.login}
+              </p>
+              <p className="text-sm text-slate-400 truncate">@{profile.login}</p>
+              <a
+                href={profile.html_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 mt-1.5 text-xs text-sky-400 hover:text-sky-300 transition-colors focus:outline-none"
+              >
+                github.com/{profile.login}
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+
+          {profile.bio && (
+            <p className="text-sm text-slate-300 leading-relaxed">{profile.bio}</p>
+          )}
+
+          {(profile.company || profile.location || joined) && (
+            <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-slate-400">
+              {profile.company && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                  {profile.company}
+                </span>
+              )}
+              {profile.location && (
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-slate-500" />
+                  {profile.location}
+                </span>
+              )}
+              {joined && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-slate-500" />
+                  Katılım: {joined}
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            <ProfileStat label="Repo" value={profile.public_repos} />
+            <ProfileStat label="Takipçi" value={profile.followers} />
+            <ProfileStat label="Takip" value={profile.following} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -463,6 +624,8 @@ export const GitHubView: React.FC = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [reposLoading, setReposLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   // Polling ref — so we can clear the interval when component unmounts or login is cancelled
@@ -545,6 +708,16 @@ export const GitHubView: React.FC = () => {
       } catch (err) {
         stopPolling();
         const appErr = err as AppError;
+        if (appErr.code === "OAUTH_STATE_MISMATCH" || appErr.code === "NO_ACTIVE_LOGIN") {
+          // Another login window (e.g. Settings) consumed or replaced this
+          // session. The account list is the source of truth now.
+          await loadAccounts();
+          setView({ kind: "accounts" });
+          setActionError(
+            "Bu giriş oturumu artık geçerli değil; başka bir pencere tamamlanmış olabilir. Hesap listesini kontrol edin."
+          );
+          return;
+        }
         setView({ kind: "login-start", session });
         setActionError(formatError(appErr));
       }
@@ -596,6 +769,28 @@ export const GitHubView: React.FC = () => {
   );
 
   // Disconnect account
+  // View profile/overview for an account
+  const handleViewProfile = useCallback(async (account: GitHubAccount) => {
+    setProfileLoading(true);
+    setProfileError(null);
+    setActionError(null);
+    setView({ kind: "profile", account, profile: null });
+    try {
+      const profile = await githubGetAccountProfile(account.id);
+      setView({ kind: "profile", account, profile });
+    } catch (err) {
+      setProfileError(formatError(err as AppError));
+    } finally {
+      setProfileLoading(false);
+    }
+  }, []);
+
+  const handleRetryProfile = useCallback(() => {
+    if (view.kind === "profile") {
+      void handleViewProfile(view.account);
+    }
+  }, [view, handleViewProfile]);
+
   const handleDisconnect = useCallback(
     async (account: GitHubAccount) => {
       setDisconnecting(account.id);
@@ -721,6 +916,7 @@ export const GitHubView: React.FC = () => {
                   key={account.id}
                   account={account}
                   onViewRepos={handleViewRepos}
+                  onViewProfile={handleViewProfile}
                   onDisconnect={handleDisconnect}
                   disconnecting={disconnecting === account.id}
                 />
@@ -739,6 +935,17 @@ export const GitHubView: React.FC = () => {
           onCancel={handleCancelLogin}
           copied={copied}
           onCopy={handleCopy}
+        />
+      )}
+
+      {view.kind === "profile" && (
+        <ProfilePanel
+          account={view.account}
+          profile={view.profile}
+          loading={profileLoading}
+          error={profileError}
+          onBack={() => setView({ kind: "accounts" })}
+          onRetry={handleRetryProfile}
         />
       )}
 

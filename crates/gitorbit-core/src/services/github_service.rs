@@ -24,8 +24,8 @@ use crate::db::Database;
 use crate::db::github_accounts::GitHubAccountDao;
 use crate::errors::CommandError;
 use crate::models::{
-    DeviceFlowSession, GitHubAccount, GitHubConnectionStatus, GitHubRepo, GitHubRepoPage,
-    PollResult,
+    DeviceFlowSession, GitHubAccount, GitHubConnectionStatus, GitHubProfile, GitHubRepo,
+    GitHubRepoPage, PollResult,
 };
 use chrono::Utc;
 use serde::Deserialize;
@@ -106,12 +106,32 @@ pub enum RawPollResponse {
     },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct RawUserResponse {
+    #[serde(default)]
     pub id: i64,
+    #[serde(default)]
     pub login: String,
     pub name: Option<String>,
     pub avatar_url: Option<String>,
+    /// Profile overview fields — all optional so older/partial payloads and
+    /// test fixtures keep deserialising.
+    #[serde(default)]
+    pub bio: Option<String>,
+    #[serde(default)]
+    pub html_url: Option<String>,
+    #[serde(default)]
+    pub company: Option<String>,
+    #[serde(default)]
+    pub location: Option<String>,
+    #[serde(default)]
+    pub public_repos: Option<i64>,
+    #[serde(default)]
+    pub followers: Option<i64>,
+    #[serde(default)]
+    pub following: Option<i64>,
+    #[serde(default)]
+    pub created_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -497,17 +517,14 @@ impl GitHubService {
 
     /// Lists repositories for the given account with pagination.
     /// `page` is 1-indexed; `per_page` is clamped to 1–100.
-    pub fn list_repos(
+    /// Loads the DB account record and its token from the OS credential store.
+    /// Shared by `list_repos` and `get_account_profile`. The token is returned
+    /// only for in-process use — never serialised to the frontend.
+    fn account_with_token(
         &self,
         db: &Database,
         account_id: &str,
-        page: u32,
-        per_page: u32,
-    ) -> Result<GitHubRepoPage, CommandError> {
-        let per_page = per_page.clamp(1, 100);
-        let page = page.max(1);
-
-        // Retrieve the token from credential store
+    ) -> Result<(crate::models::GitHubAccount, String), CommandError> {
         let account = db
             .with_conn(|conn| GitHubAccountDao::get_by_id(conn, account_id))?
             .ok_or_else(|| {
@@ -518,7 +535,6 @@ impl GitHubService {
                 )
             })?;
 
-        // Token retrieved here only for this request — never stored or forwarded
         let token = self
             .store
             .get_credential(&account.credential_ref)
@@ -531,6 +547,22 @@ impl GitHubService {
                     e
                 }
             })?;
+
+        Ok((account, token))
+    }
+
+    pub fn list_repos(
+        &self,
+        db: &Database,
+        account_id: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<GitHubRepoPage, CommandError> {
+        let per_page = per_page.clamp(1, 100);
+        let page = page.max(1);
+
+        // Token retrieved here only for this request — never stored or forwarded
+        let (_account, token) = self.account_with_token(db, account_id)?;
 
         let raw_repos = self.client.list_repos(&token, page, per_page)?;
 
@@ -564,6 +596,40 @@ impl GitHubService {
             page,
             per_page,
             has_more,
+        })
+    }
+
+    /// Fetches the live public profile/overview for a connected account
+    /// (`GET /user`). The token is retrieved from the OS credential store for
+    /// this single request and is never returned or logged.
+    pub fn get_account_profile(
+        &self,
+        db: &Database,
+        account_id: &str,
+    ) -> Result<GitHubProfile, CommandError> {
+        let (account, token) = self.account_with_token(db, account_id)?;
+
+        let user = self.client.get_authenticated_user(&token)?;
+
+        // Touch last_used_at on successful API call
+        let _ = db.with_conn(|conn| GitHubAccountDao::touch_last_used(conn, &account.id));
+
+        let html_url = user
+            .html_url
+            .unwrap_or_else(|| format!("https://github.com/{}", user.login));
+
+        Ok(GitHubProfile {
+            login: user.login,
+            name: user.name,
+            avatar_url: user.avatar_url,
+            bio: user.bio,
+            html_url,
+            company: user.company,
+            location: user.location,
+            public_repos: user.public_repos.unwrap_or(0),
+            followers: user.followers.unwrap_or(0),
+            following: user.following.unwrap_or(0),
+            created_at: user.created_at,
         })
     }
 }

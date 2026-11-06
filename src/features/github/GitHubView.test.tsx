@@ -2,7 +2,12 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GitHubView } from "./GitHubView";
 import * as tauriCommands from "../../lib/tauriCommands";
-import type { DeviceFlowSession, GitHubAccount, GitHubRepoPage } from "../../types/ipc";
+import type {
+  DeviceFlowSession,
+  GitHubAccount,
+  GitHubProfile,
+  GitHubRepoPage,
+} from "../../types/ipc";
 
 vi.mock("../../lib/tauriCommands", () => ({
   githubBeginLogin: vi.fn(),
@@ -10,6 +15,7 @@ vi.mock("../../lib/tauriCommands", () => ({
   githubListAccounts: vi.fn(),
   githubDisconnectAccount: vi.fn(),
   githubListRepos: vi.fn(),
+  githubGetAccountProfile: vi.fn(),
 }));
 
 const mockAccounts: GitHubAccount[] = [
@@ -235,5 +241,67 @@ describe("GitHubView (Faz 6)", () => {
         screen.getByRole("button", { name: /İlk Hesabı Ekle/i })
       ).toBeInTheDocument();
     });
+  });
+
+  it("opens the account profile overview with bio and stats", async () => {
+    const mockProfile: GitHubProfile = {
+      login: "octocat",
+      name: "The Octocat",
+      avatar_url: "https://avatars.githubusercontent.com/u/583231",
+      bio: "GitHub mascot. Available for hire on Mars.",
+      html_url: "https://github.com/octocat",
+      company: "@github",
+      location: "San Francisco",
+      public_repos: 8,
+      followers: 12000,
+      following: 9,
+      created_at: "2011-01-25T18:44:36Z",
+    };
+    vi.mocked(tauriCommands.githubGetAccountProfile).mockResolvedValue(mockProfile);
+
+    render(<GitHubView />);
+    await waitFor(() => {
+      expect(screen.getByText("The Octocat")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Profil/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("GitHub mascot. Available for hire on Mars.")
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("@github")).toBeInTheDocument();
+    expect(screen.getByText("San Francisco")).toBeInTheDocument();
+    // Stats: locale-formatted follower count
+    expect(screen.getByText("12.000")).toBeInTheDocument();
+    expect(tauriCommands.githubGetAccountProfile).toHaveBeenCalledWith("acc-uuid-1");
+
+    // Token safety still holds on the profile screen
+    expect(document.body.innerHTML).not.toContain("gho_");
+  });
+
+  it("shows a retryable error when profile loading fails", async () => {
+    vi.mocked(tauriCommands.githubGetAccountProfile).mockRejectedValue({
+      code: "AUTH_EXPIRED",
+      message: "GitHub token bulunamadı.",
+      recoverable: true,
+      retryable: true,
+      correlation_id: "c1",
+    });
+
+    render(<GitHubView />);
+    await waitFor(() => {
+      expect(screen.getByText("The Octocat")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Profil/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Kimlik doğrulama gerekiyor. Lütfen tekrar bağlanın.")
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /Tekrar dene/i })).toBeInTheDocument();
   });
 });

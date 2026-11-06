@@ -306,6 +306,24 @@ export interface GitHubAccount {
   last_used_at: string | null;
 }
 
+/**
+ * Live public profile/overview data for a connected account (GET /user).
+ * Public GitHub metadata only — never token material.
+ */
+export interface GitHubProfile {
+  login: string;
+  name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  html_url: string;
+  company: string | null;
+  location: string | null;
+  public_repos: number;
+  followers: number;
+  following: number;
+  created_at: string | null;
+}
+
 export interface GitHubRepo {
   id: number;
   name: string;

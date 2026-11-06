@@ -194,6 +194,26 @@ pub struct GitHubAccount {
     pub last_used_at: Option<String>,
 }
 
+/// Public profile/overview data for a connected GitHub account, fetched live
+/// from the GitHub REST API (`GET /user`). Contains only data GitHub already
+/// serves publicly to the authenticated user; never any token material.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GitHubProfile {
+    pub login: String,
+    pub name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub bio: Option<String>,
+    /// Canonical github.com profile URL (safe to open in a browser).
+    pub html_url: String,
+    pub company: Option<String>,
+    pub location: Option<String>,
+    pub public_repos: i64,
+    pub followers: i64,
+    pub following: i64,
+    /// Account creation date as reported by GitHub (ISO-8601).
+    pub created_at: Option<String>,
+}
+
 /// A single GitHub repository item returned from the API.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GitHubRepo {

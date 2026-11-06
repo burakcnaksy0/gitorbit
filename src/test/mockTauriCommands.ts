@@ -54,3 +54,4 @@ export const githubPollLogin = vi.fn();
 export const githubListAccounts = vi.fn();
 export const githubDisconnectAccount = vi.fn();
 export const githubListRepos = vi.fn();
+export const githubGetAccountProfile = vi.fn();

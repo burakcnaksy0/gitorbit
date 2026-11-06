@@ -24,6 +24,7 @@ import type {
   DiffOutput,
   GitEnvironment,
   GitHubAccount,
+  GitHubProfile,
   GitHubRepoPage,
   GitIdentity,
   GitStatus,
@@ -490,5 +491,18 @@ export async function githubListRepos(
     accountId,
     page,
     perPage,
+  });
+}
+
+/**
+ * Fetches the live public profile/overview for a connected GitHub account
+ * (avatar, bio, company, location, repo/follower counts).
+ *
+ * - Throws `ACCOUNT_NOT_FOUND` if the account is unknown or disconnected.
+ * - Throws `AUTH_EXPIRED` if the stored token is missing.
+ */
+export async function githubGetAccountProfile(accountId: string): Promise<GitHubProfile> {
+  return tauriCall<GitHubProfile>("github_get_account_profile", {
+    accountId,
   });
 }

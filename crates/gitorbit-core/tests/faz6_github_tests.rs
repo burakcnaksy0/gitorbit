@@ -55,6 +55,7 @@ impl MockGitHubHttpClient {
                 login: "testuser".to_string(),
                 name: Some("Test User".to_string()),
                 avatar_url: Some("https://avatars.githubusercontent.com/u/12345".to_string()),
+                ..Default::default()
             },
             repos_resp: vec![RawRepoResponse {
                 id: 1001,
@@ -102,6 +103,7 @@ impl MockGitHubHttpClient {
                 login: "anotheruser".to_string(),
                 name: Some("Another User".to_string()),
                 avatar_url: None,
+                ..Default::default()
             },
             repos_resp: vec![],
         }
@@ -125,6 +127,7 @@ impl MockGitHubHttpClient {
                 login: "nobody".to_string(),
                 name: None,
                 avatar_url: None,
+                ..Default::default()
             },
             repos_resp: vec![],
         }
@@ -163,12 +166,7 @@ impl GitHubHttpClient for MockGitHubHttpClient {
     }
 
     fn get_authenticated_user(&self, _token: &str) -> Result<RawUserResponse, CommandError> {
-        Ok(RawUserResponse {
-            id: self.user_resp.id,
-            login: self.user_resp.login.clone(),
-            name: self.user_resp.name.clone(),
-            avatar_url: self.user_resp.avatar_url.clone(),
-        })
+        Ok(self.user_resp.clone())
     }
 
     fn list_repos(
@@ -524,4 +522,76 @@ fn test_migration_2_github_accounts_table() {
 
         Ok(())
     }).expect("DB operations failed");
+}
+
+// ---------------------------------------------------------------------------
+// Profile overview: get_account_profile returns only public metadata
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_get_account_profile_returns_public_overview() {
+    let db = make_db();
+    let svc = make_service(MockGitHubHttpClient::new_with_success_on_first_poll());
+
+    // Connect an account first (device flow success stores token + account).
+    let (_session, pending) = svc.begin_device_flow().expect("begin_device_flow");
+    let session_token = pending.session_token.clone();
+    let account = match svc
+        .poll_device_flow(&db, &pending, &session_token)
+        .expect("poll")
+    {
+        PollResult::Success { account } => account,
+        PollResult::Pending => panic!("Expected success on first poll"),
+    };
+
+    let profile = svc
+        .get_account_profile(&db, &account.id)
+        .expect("get_account_profile");
+
+    assert_eq!(profile.login, "testuser");
+    assert_eq!(profile.name.as_deref(), Some("Test User"));
+    // Mock payload has no html_url → deterministic fallback from login.
+    assert_eq!(profile.html_url, "https://github.com/testuser");
+    assert_eq!(profile.public_repos, 0);
+
+    // AC1 extension: the profile DTO must never carry token material either.
+    let json = serde_json::to_string(&profile).expect("profile serialises");
+    assert!(
+        !json.contains("test_token_xyz") && !json.contains("gho_"),
+        "Profile payload leaked token material"
+    );
+
+    // Unknown account → typed ACCOUNT_NOT_FOUND (not a panic, not AUTH_EXPIRED).
+    let err = svc
+        .get_account_profile(&db, "no-such-account")
+        .expect_err("unknown account must fail");
+    assert_eq!(err.code, "ACCOUNT_NOT_FOUND");
+}
+
+#[test]
+fn test_get_account_profile_expired_after_disconnect() {
+    let db = make_db();
+    let svc = make_service(MockGitHubHttpClient::new_with_success_on_first_poll());
+
+    let (_session, pending) = svc.begin_device_flow().expect("begin_device_flow");
+    let session_token = pending.session_token.clone();
+    let account = match svc
+        .poll_device_flow(&db, &pending, &session_token)
+        .expect("poll")
+    {
+        PollResult::Success { account } => account,
+        PollResult::Pending => panic!("Expected success on first poll"),
+    };
+
+    // Disconnect removes the token from the credential store.
+    svc.disconnect_account(&db, &account.id)
+        .expect("disconnect");
+
+    // Disconnect removes the token AND the DB record, so the account lookup
+    // fails first with ACCOUNT_NOT_FOUND (defence in depth: even if the token
+    // somehow remained, it is no longer addressable).
+    let err = svc
+        .get_account_profile(&db, &account.id)
+        .expect_err("profile must fail after disconnect");
+    assert_eq!(err.code, "ACCOUNT_NOT_FOUND");
 }
