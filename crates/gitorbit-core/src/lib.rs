@@ -14,8 +14,9 @@ pub use credential_store::{CredentialStore, OsCredentialStore};
 pub use db::Database;
 pub use errors::CommandError;
 pub use git::{
-    GitAdapter, GitBranchManager, GitCommitManager, GitDiffParser, GitHistoryManager,
-    GitMergeManager, GitOperationStateManager, GitRemoteManager, GitStatusParser,
+    GitAdapter, GitBranchManager, GitCommitManager, GitConfigManager, GitDiffParser,
+    GitHistoryManager, GitMergeManager, GitOperationStateManager, GitRemoteManager,
+    GitStatusParser,
 };
 pub use models::*;
 pub use services::github_service::PendingDeviceFlow;

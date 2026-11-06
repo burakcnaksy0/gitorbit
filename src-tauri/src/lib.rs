@@ -13,7 +13,8 @@ use gitorbit_core::db::Database;
 use gitorbit_core::services::{RepositoryService, SettingsService};
 use gitorbit_core::{
     AppInfo, AppSettings, AppSettingsUpdate, BranchComparison, BranchInfo, CloneResult,
-    CommandError, CommitDetails, CommitResult, DeviceFlowSession, DiffOutput, GitEnvironment,
+    CommandError, CommitDetails, CommitResult, DeviceFlowSession, DiffOutput, GitCommitManager,
+    GitConfigManager, GitEnvironment,
     GitHubAccount, GitHubProfile, GitHubPublishResult, GitHubRepoPage, GitIdentity,
     GitRemoteManager, GitStatus, HistoryOutput, PendingDeviceFlow, PollResult, RemoteInfo,
     RepoLockRegistry, RepositoryDetails, RepositoryOperationState, RepositoryRecord,
@@ -416,9 +417,22 @@ fn repository_push(
 ) -> CmdResult<GitStatus> {
     let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
     with_db(&state, |db| {
-        // Bağlı hesabın token'ı ile push: remote owner'ı bir hesap login'iyle
-        // eşleşirse kimlik sistem git yerine o hesabın OAuth token'ı olur.
-        let token = owner_push_token(&state, db, &repo_id);
+        // Hesap bazlı kimlik çözümü: origin owner'ı ↔ bağlı hesap login'i.
+        // Eşleşme varsa push o hesabın token'ıyla (yalnızca HTTPS) gider ve
+        // depo yerel commit kimliği hesaba göre kendiliğinden düzelir.
+        let owner_identity = origin_owner_identity(&state, db, &repo_id);
+        let token = match &owner_identity {
+            // SSH remote: ~/.ssh/config kimliği zaten doğru hesabı seçer.
+            Some((account, true)) => state.github.access_token(db, &account.id).ok(),
+            _ => None,
+        };
+        if let Some((account, _)) = &owner_identity {
+            let (name, email) = GitHubService::git_identity_for(account);
+            // Best-effort ve yıkıcı değil: yalnızca gelecek commit'lerin kimliği
+            // ayarlanır; manuel ayarlanmış kimliğe dokunulmaz. Geçmiş yeniden
+            // yazımı yalnızca yayınlama akışında yapılır (remote boşken güvenli).
+            let _ = apply_repo_identity(db, &repo_id, &name, &email, true, false);
+        }
         RepositoryService::push(
             db,
             &repo_id,
@@ -431,24 +445,82 @@ fn repository_push(
     })
 }
 
-/// Çözüm: repo'nun push yapacağı remote'un owner'ı ↔ bağlı GitHub hesabı login'i.
-/// Uygun token bulunamazsa None döner ve push mevcut sistem kimliğiyle denenir.
-fn owner_push_token(state: &AppState, db: &Database, repo_id: &str) -> Option<String> {
+/// Çözüm: origin URL'sinin owner'ı ↔ bağlı GitHub hesabı login'i. Dönüş:
+/// (hesap, url HTTPS mi?). Eşleşme yoksa None — push sistem kimliğiyle denenir.
+fn origin_owner_identity(
+    state: &AppState,
+    db: &Database,
+    repo_id: &str,
+) -> Option<(GitHubAccount, bool)> {
     let record = RepositoryService::get_repository(db, repo_id).ok()?;
-    let remotes = GitRemoteManager::list_remotes(std::path::Path::new(&record.canonical_path))
-        .ok()
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    let remotes =
+        GitRemoteManager::list_remotes(std::path::Path::new(&record.canonical_path)).ok()?;
     let url = remotes
         .iter()
         .find(|r| r.name == "origin")
         .and_then(|r| r.push_url.as_ref().or(r.fetch_url.as_ref()))?;
     let (owner, https) = GitRemoteManager::parse_remote_owner(url)?;
-    if !https {
-        return None; // SSH remote: ~/.ssh/config kimliği zaten doğru hesabı seçer
+    state
+        .github
+        .account_for_repo_owner(db, &owner)
+        .ok()
+        .flatten()
+        .map(|account| (account, https))
+}
+
+/// Depo commit kimliğini verilen hesaba bağlar: depo-yerel `user.name`/
+/// `user.email` ayarlanır. `rewrite_history` ek olarak makinenin varsayılan
+/// e-postasıyla yazılmış mevcut commit'leri bu kimliğe çevirir — yalnızca
+/// yayınlama akışında kullanılır (yeni oluşturulan remote boş olduğu için
+/// güvenli; push akışında yıkıcı olduğundan kapalıdır). Diğer yazarların
+/// commit'lerine dokunulmaz. `respect_manual`: kullanıcı ChangesView'dan elle
+/// kimlik verdiyse (hesabın adresinden farklıysa) hiçbir şeye dokunulmaz.
+/// Best-effort: hata durumunda kısa not döner — yayında uyarıya eklenir.
+fn apply_repo_identity(
+    db: &Database,
+    repo_id: &str,
+    name: &str,
+    email: &str,
+    respect_manual: bool,
+    rewrite_history: bool,
+) -> Option<String> {
+    let record = RepositoryService::get_repository(db, repo_id).ok()?;
+    let path = std::path::Path::new(&record.canonical_path);
+
+    let local = GitConfigManager::local_email(path);
+    let manual_identity = local
+        .as_deref()
+        .is_some_and(|e| !e.eq_ignore_ascii_case(email));
+    if respect_manual && manual_identity {
+        return None; // kullanıcı bu depoya bilinçli kimlik vermiş — saygı
     }
-    state.github.token_for_repo_owner(db, &owner).ok().flatten()
+
+    let previous = GitCommitManager::get_identity(path)
+        .ok()
+        .and_then(|id| id.email);
+    if let Err(e) = GitCommitManager::set_identity(path, name, email) {
+        return Some(format!("Depo kimliği ayarlanamadı: {}", e.message));
+    }
+
+    // Yeniden yazım yalnızca istendiyse, geçmiş varsa, eski kimlik hesaptan
+    // farklıysa ve çalışma alanı temizse anlamlı/güvenli.
+    let needs_rewrite = previous
+        .as_deref()
+        .is_some_and(|p| !p.eq_ignore_ascii_case(email));
+    if !rewrite_history || !needs_rewrite || !GitConfigManager::has_commits(path) {
+        return None;
+    }
+    if GitConfigManager::has_pending_changes(path) {
+        return Some(
+            "Makine varsayılanıyla yazılmış commit'lerin sahipliği henüz düzeltilmedi: \
+             çalışma alanında bekleyen değişiklikler var. Onları commit'ledikten sonraki \
+             ilk Push'ta sahiplik kendiliğinden düzelir."
+                .to_string(),
+        );
+    }
+    GitConfigManager::rewrite_authorship(path, previous.as_deref().unwrap_or_default(), name, email)
+        .err()
+        .map(|e| format!("Commit sahipliği yeniden yazılamadı: {}", e.message))
 }
 
 /// Lists all configured remotes for a repository.
@@ -648,6 +720,16 @@ fn github_publish_repository(
         )));
     }
 
+    // 3.5. Depo commit kimliği = yayımlanan hesap: bundan sonraki commit'ler
+    // o hesapla oluşur; makinenin varsayılan e-postasıyla yazılmış mevcut
+    // commit'ler de bu hesaba çevrilir (remote yeni oluşturuldu — geçmiş için
+    // risk yok, push öncesi son fırsat).
+    let identity_note = state
+        .github
+        .git_identity(&db, &account_id)
+        .ok()
+        .and_then(|(name, email)| apply_repo_identity(&db, &repo_id, &name, &email, false, true));
+
     // 4. Best-effort initial push (never forces). Hesabın token'ı ile:
     // origin HTTPS ise kimlik doğrudan bu hesap olur; SSH ise config devrede.
     let push_token = state.github.access_token(&db, &account_id).ok();
@@ -660,8 +742,14 @@ fn github_publish_repository(
         true,
         push_token.as_deref(),
     ) {
-        Ok(_) => (true, None),
-        Err(e) => (false, Some(e.message)),
+        Ok(_) => (true, identity_note),
+        Err(e) => (
+            false,
+            Some(match identity_note {
+                Some(note) => format!("{} — {}", e.message, note),
+                None => e.message,
+            }),
+        ),
     };
 
     Ok(GitHubPublishResult {

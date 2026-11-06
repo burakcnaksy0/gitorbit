@@ -583,14 +583,56 @@ impl GitHubService {
         db: &Database,
         owner: &str,
     ) -> Result<Option<String>, CommandError> {
+        let token_account = self.account_for_repo_owner(db, owner)?;
+        Ok(token_account
+            .and_then(|a| self.account_with_token(db, &a.id).ok())
+            .map(|(_, token)| token))
+    }
+
+    /// Bağlı hesaplardan GitHub login'i `owner` ile eşleşen hesap (yoksa None).
+    pub fn account_for_repo_owner(
+        &self,
+        db: &Database,
+        owner: &str,
+    ) -> Result<Option<GitHubAccount>, CommandError> {
         let accounts = db.with_conn(|conn| GitHubAccountDao::list(conn))?;
-        let Some(account) = accounts
+        Ok(accounts
             .into_iter()
-            .find(|a| a.login.eq_ignore_ascii_case(owner))
-        else {
-            return Ok(None);
-        };
-        Ok(self.account_with_token(db, &account.id).ok().map(|(_, t)| t))
+            .find(|a| a.login.eq_ignore_ascii_case(owner)))
+    }
+
+    /// Bir hesabın git commit kimliği — yayınlama akışı repo yerel
+    /// `user.name`/`user.email` değerlerini buna göre ayarlar.
+    pub fn git_identity(
+        &self,
+        db: &Database,
+        account_id: &str,
+    ) -> Result<(String, String), CommandError> {
+        let account = db
+            .with_conn(|conn| GitHubAccountDao::get_by_id(conn, account_id))?
+            .ok_or_else(|| {
+                CommandError::new(
+                    "ACCOUNT_NOT_FOUND",
+                    format!("Hesap bulunamadı: {}", account_id),
+                    false,
+                )
+            })?;
+        Ok(Self::git_identity_for(&account))
+    }
+
+    /// Hesabın git commit kimliği: `(isim, noreply e-posta)`. Yalnızca
+    /// veritabanındaki meta okunur — API çağrısı gerekmez, token'a dokunulmaz.
+    pub fn git_identity_for(account: &GitHubAccount) -> (String, String) {
+        let name = account
+            .display_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(&account.login)
+            .to_string();
+        let email =
+            crate::git::GitConfigManager::noreply_email(&account.provider_user_id, &account.login);
+        (name, email)
     }
 
     /// Lists repositories for the given account with pagination.
