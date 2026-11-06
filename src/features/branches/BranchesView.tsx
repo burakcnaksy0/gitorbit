@@ -27,6 +27,7 @@ import {
   repositoryGetStatus,
   repositoryMergeBranch,
 } from "../../lib/tauriCommands";
+import { useNotify } from "../../components/common/Toast";
 
 interface BranchesViewProps {
   repoId?: string | null;
@@ -48,6 +49,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
   onBranchSwitched,
 }) => {
   const activeRepoId = repoId ?? currentRepo?.id ?? null;
+  const notify = useNotify();
 
   const [branches, setBranches] = useState<BranchInfo[]>([]);
   const [status, setStatus] = useState<GitStatus | null>(null);
@@ -127,6 +129,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
       const updatedStatus = await repositoryCheckoutBranch(activeRepoId, branch.name);
       setStatus(updatedStatus);
       await loadBranches();
+      notify.success("Dala geçildi", branch.name);
       if (onBranchSwitched && updatedStatus.branch) {
         onBranchSwitched(updatedStatus.branch);
       }
@@ -173,6 +176,10 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
       setIsCreateOpen(false);
       setNewBranchName("");
       await loadBranches();
+      notify.success(
+        "Dal oluşturuldu",
+        checkoutNewBranch ? `${created.name} dalına geçildi` : created.name
+      );
       if (checkoutNewBranch && onBranchSwitched) {
         onBranchSwitched(created.name);
       }
@@ -195,6 +202,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
     setDeleteError(null);
     try {
       await repositoryDeleteBranch(activeRepoId, branchToDelete.name, forceDelete);
+      notify.info("Dal silindi", branchToDelete.name);
       setBranchToDelete(null);
       setForceDelete(false);
       await loadBranches();
@@ -217,6 +225,10 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
     try {
       const result = await repositoryMergeBranch(activeRepoId, branchToMerge.name);
       setStatus(result);
+      notify.success(
+        "Birleştirme tamamlandı",
+        `${branchToMerge.name} → ${result.branch ?? "aktif dal"}`
+      );
       setBranchToMerge(null);
       await loadBranches();
     } catch (err) {
@@ -246,6 +258,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
     try {
       const result = await repositoryContinueOperation(activeRepoId);
       setStatus(result);
+      notify.success("İşlem tamamlandı", "Devam eden merge/rebase bitirildi");
       await loadBranches();
     } catch (err) {
       const e = err as AppError;
@@ -263,6 +276,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
       const result = await repositoryAbortOperation(activeRepoId);
       setStatus(result);
       setIsAbortConfirmOpen(false);
+      notify.info("İşlem iptal edildi", "Devam eden merge/rebase geri alındı");
       await loadBranches();
     } catch (err) {
       const e = err as AppError;

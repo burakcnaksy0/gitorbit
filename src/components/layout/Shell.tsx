@@ -23,6 +23,7 @@ import type {
   CommitInfo,
   GitEnvironment,
   GitStatus,
+  GitHubPublishResult,
   RepositoryRecord,
 } from "../../types/ipc";
 import {
@@ -44,6 +45,7 @@ import {
   settingsUpdate,
 } from "../../lib/tauriCommands";
 import { pickDirectory } from "../../lib/directoryPicker";
+import { useNotify } from "../common/Toast";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -125,6 +127,7 @@ export const Shell: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings | null>(null);
 
   const [notice, setNotice] = useState<NoticeState>(CLOSED_NOTICE);
+  const notify = useNotify();
 
   const showNotice = useCallback(
     (
@@ -280,6 +283,7 @@ export const Shell: React.FC = () => {
         await loadRepositories();
         setCurrentRepoId(record.id);
         setActiveTab("changes");
+        notify.success("Depo açıldı", record.display_name);
       } catch (err) {
         // Plain folder: offer to git-init it (locally or published to GitHub)
         // instead of dead-ending with NOT_A_GIT_REPOSITORY.
@@ -291,7 +295,7 @@ export const Shell: React.FC = () => {
         showError("Depo Ekle", err);
       }
     },
-    [loadRepositories, showError]
+    [loadRepositories, notify, showError]
   );
 
   // "Git deposu olarak başlat" — init + register, then continue normally.
@@ -304,6 +308,7 @@ export const Shell: React.FC = () => {
       await loadRepositories();
       setCurrentRepoId(record.id);
       setActiveTab("changes");
+      notify.success("Git deposu başlatıldı", record.display_name);
     } catch (err) {
       setNotGitPath(null);
       showError("Git Deposu Başlat", err);
@@ -335,9 +340,23 @@ export const Shell: React.FC = () => {
     setPublishTarget({ repoId: repo.id, name: repo.name });
   }, []);
 
-  const handlePublished = useCallback(async () => {
-    await loadRepositories();
-  }, [loadRepositories]);
+  const handlePublished = useCallback(
+    async (result: GitHubPublishResult) => {
+      await loadRepositories();
+      if (result.pushed) {
+        notify.success(
+          "GitHub'da yayınlandı",
+          result.warning ? `${result.html_url} — ${result.warning}` : result.html_url
+        );
+      } else {
+        notify.warning(
+          "GitHub'da oluşturuldu — push tamamlanamadı",
+          result.warning ?? result.html_url
+        );
+      }
+    },
+    [loadRepositories, notify]
+  );
 
   const handleAddRepository = useCallback(async () => {
     try {
@@ -356,11 +375,12 @@ export const Shell: React.FC = () => {
         await loadRepositories();
         setCurrentRepoId(result.repository.id);
         setActiveTab("changes");
+        notify.success("Depo klonlandı", result.repository.display_name);
       } catch (err) {
         showError("Depo Klonla", err);
       }
     },
-    [loadRepositories, showError]
+    [loadRepositories, notify, showError]
   );
 
   const handleRemoveRepository = useCallback(
@@ -368,11 +388,15 @@ export const Shell: React.FC = () => {
       try {
         await repositoryRemove(repoId);
         await loadRepositories();
+        notify.info(
+          "Depo listesinden çıkarıldı",
+          repositories.find((r) => r.id === repoId)?.display_name
+        );
       } catch (err) {
         showError("Depo Kaydını Kaldır", err);
       }
     },
-    [loadRepositories, showError]
+    [loadRepositories, notify, repositories, showError]
   );
 
   const handleRelinkRepository = useCallback(
@@ -380,11 +404,12 @@ export const Shell: React.FC = () => {
       try {
         await repositoryRelink(repoId, newPath);
         await loadRepositories();
+        notify.success("Depo yeniden bağlandı", newPath);
       } catch (err) {
         showError("Depoyu Yeniden Bağla", err);
       }
     },
-    [loadRepositories, showError]
+    [loadRepositories, notify, showError]
   );
 
   const refreshCurrentStatus = useCallback(async (repoId: string) => {
@@ -403,12 +428,16 @@ export const Shell: React.FC = () => {
     try {
       const status = await repositoryFetch(currentRepoId);
       setStatuses((prev) => ({ ...prev, [currentRepoId]: status }));
+      notify.info(
+        "Senkronize edildi",
+        `origin güncellendi${status.behind ? ` — ${status.behind} yeni commit var` : ""}`
+      );
     } catch (err) {
       showError("Senkronize Et (Fetch)", err);
     } finally {
       setIsSyncing(false);
     }
-  }, [currentRepoId, showError]);
+  }, [currentRepoId, notify, showError]);
 
   // Pull: backend refuses destructive/unsafe states (dirty tree, conflicts)
   // with typed errors — surfaced verbatim through the notice modal.
@@ -416,16 +445,23 @@ export const Shell: React.FC = () => {
     if (!currentRepoId) return;
     setIsPulling(true);
     try {
+      const incoming = currentRepo?.behind ?? 0;
       const status = await repositoryPull(currentRepoId);
       setStatuses((prev) => ({ ...prev, [currentRepoId]: status }));
       // New commits landed locally — refresh summaries (last commit, branch).
       await loadRepositories();
+      notify.success(
+        "İçe aktarma tamamlandı",
+        incoming > 0
+          ? `${incoming} yeni commit → ${status.branch ?? currentRepo?.currentBranch ?? "dal"}`
+          : `${status.branch ?? currentRepo?.currentBranch ?? "dal"} zaten günceldi`
+      );
     } catch (err) {
       showError("İçe Aktar (Pull)", err);
     } finally {
       setIsPulling(false);
     }
-  }, [currentRepoId, loadRepositories, showError]);
+  }, [currentRepoId, currentRepo, loadRepositories, notify, showError]);
 
   // Push: never auto-forces; non-fast-forward arrives as REMOTE_REJECTED.
   // A branch without upstream is published with --set-upstream (origin/<branch>),
@@ -435,15 +471,21 @@ export const Shell: React.FC = () => {
     setIsPushing(true);
     try {
       const publish = !currentRepo?.upstream;
+      const branch = currentRepo?.currentBranch ?? "HEAD";
+      const outgoing = currentRepo?.ahead ?? 0;
       const status = await repositoryPush(currentRepoId, null, null, false, publish);
       setStatuses((prev) => ({ ...prev, [currentRepoId]: status }));
       await loadRepositories();
+      notify.success(
+        publish ? "Dal yayınlandı" : "Push tamamlandı",
+        `${outgoing} commit → origin/${branch}`
+      );
     } catch (err) {
       showError("Dışa Aktar (Push)", err);
     } finally {
       setIsPushing(false);
     }
-  }, [currentRepoId, currentRepo, loadRepositories, showError]);
+  }, [currentRepoId, currentRepo, loadRepositories, notify, showError]);
 
   const handleSaveSettings = useCallback(async (update: AppSettingsUpdate) => {
     const next = await settingsUpdate(update);
@@ -644,7 +686,7 @@ export const Shell: React.FC = () => {
           repoId={publishTarget.repoId}
           defaultName={publishTarget.name}
           onClose={() => setPublishTarget(null)}
-          onPublished={() => void handlePublished()}
+          onPublished={(res) => void handlePublished(res)}
         />
       )}
 

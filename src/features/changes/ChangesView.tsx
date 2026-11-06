@@ -38,6 +38,7 @@ import {
   repositoryStageFiles,
   repositoryUnstageFiles,
 } from "../../lib/tauriCommands";
+import { shortSha, useNotify } from "../../components/common/Toast";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -400,6 +401,7 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
   onStatusChanged,
 }) => {
   const repoId = propRepoId ?? currentRepo?.id ?? null;
+  const notify = useNotify();
 
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [commitMessage, setCommitMessage] = useState("");
@@ -718,6 +720,10 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
       setCommitMessage("");
       setCommitSuccessSha(res.commit_sha);
       setTimeout(() => setCommitSuccessSha(null), 6000);
+      notify.success(
+        "Commit atıldı",
+        `${shortSha(res.commit_sha)} · ${res.status.branch ?? status?.branch ?? "HEAD"} dalında`
+      );
     } catch (err) {
       const e = err as AppError;
       if (e.code === "IDENTITY_MISSING") {
@@ -736,7 +742,7 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
     } finally {
       setIsCommitting(false);
     }
-  }, [commitMessage, onStatusChanged, repoId, status]);
+  }, [commitMessage, notify, onStatusChanged, repoId, status]);
 
   const handleSaveIdentity = useCallback(
     async (e: React.FormEvent) => {
@@ -756,6 +762,10 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
       try {
         await repositorySetIdentity(repoId, identityName.trim(), identityEmail.trim());
         setIsIdentityModalOpen(false);
+        notify.success(
+          "Depo kimliği güncellendi",
+          `${identityName.trim()} · ${identityEmail.trim()}`
+        );
         if (commitMessage.trim() && status && status.staged_files.length > 0) {
           void handleCommit();
         }
@@ -766,7 +776,7 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
         setIsSavingIdentity(false);
       }
     },
-    [commitMessage, handleCommit, identityEmail, identityName, repoId, status]
+    [commitMessage, handleCommit, identityEmail, identityName, notify, repoId, status]
   );
 
   // -------------------------------------------------------------------------
