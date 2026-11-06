@@ -441,3 +441,28 @@ fn test_validate_name_rejects_injection() {
     assert!(GitRemoteManager::validate_name("upstream", "Remote").is_ok());
     assert!(GitRemoteManager::validate_name("feature/login-v2", "Branch").is_ok());
 }
+
+// ---------------------------------------------------------------------------
+// GitRemoteManager::add — used by the GitHub publish flow
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_add_remote_success_duplicate_and_invalid_url() {
+    let dir = tempdir().expect("tempdir");
+    init_local_repo(dir.path());
+
+    // Success: origin added and listed.
+    let remotes = GitRemoteManager::add(dir.path(), "origin", "https://github.com/user/yeni.git")
+        .expect("add origin");
+    assert!(remotes.iter().any(|r| r.name == "origin"));
+
+    // Duplicate rejected with REMOTE_EXISTS.
+    let err = GitRemoteManager::add(dir.path(), "origin", "https://github.com/user/b.git")
+        .expect_err("duplicate origin must fail");
+    assert_eq!(err.code, "REMOTE_EXISTS");
+
+    // Invalid URLs rejected before touching git.
+    assert!(GitRemoteManager::add(dir.path(), "evil", "--upload-pack=bad").is_err());
+    assert!(GitRemoteManager::add(dir.path(), "ftp", "ftp://example.com/x.git").is_err());
+    assert!(GitRemoteManager::add(dir.path(), "space", "https://a b/c.git").is_err());
+}

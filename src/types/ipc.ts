@@ -324,6 +324,15 @@ export interface GitHubProfile {
   created_at: string | null;
 }
 
+/** Outcome of publishing a local repository to GitHub. */
+export interface GitHubPublishResult {
+  html_url: string;
+  clone_url: string;
+  /** False when HEAD was unborn or git-level push failed (remote repo still created). */
+  pushed: boolean;
+  warning: string | null;
+}
+
 export interface GitHubRepo {
   id: number;
   name: string;

@@ -11,6 +11,7 @@ import {
   Link2,
   Loader2,
   Plus,
+  Rocket,
   Search,
   Trash2,
   X,
@@ -31,6 +32,8 @@ interface RepositoryListViewProps {
   onRemoveRepository: (repoId: string) => void;
   onRelinkRepository: (repoId: string, newPath: string) => void;
   onOpenInFileManager: (path: string) => void;
+  /** Shown for repos without an `origin`: publish to GitHub. */
+  onPublishRequest?: (repo: RepositorySummary) => void;
 }
 
 type ModalState =
@@ -48,6 +51,7 @@ export const RepositoryListView: React.FC<RepositoryListViewProps> = ({
   onRemoveRepository,
   onRelinkRepository,
   onOpenInFileManager,
+  onPublishRequest,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [modal, setModal] = useState<ModalState>({ kind: "none" });
@@ -304,18 +308,34 @@ export const RepositoryListView: React.FC<RepositoryListViewProps> = ({
                         Yeniden Bağla
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setModal({ kind: "remove", repo });
-                        }}
-                        className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 transition-colors"
-                        title="Depo kaydını kaldır"
-                        aria-label={`${repo.name} kaydını kaldır`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {onPublishRequest && !repo.upstream && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onPublishRequest(repo);
+                            }}
+                            className="p-1 rounded text-slate-500 hover:text-sky-400 hover:bg-sky-950/30 transition-colors"
+                            title="GitHub'da Yayınla (bu depoda origin remote'u yok)"
+                            aria-label={`${repo.name} deposunu GitHub'da yayınla`}
+                          >
+                            <Rocket className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setModal({ kind: "remove", repo });
+                          }}
+                          className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 transition-colors"
+                          title="Depo kaydını kaldır"
+                          aria-label={`${repo.name} kaydını kaldır`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>

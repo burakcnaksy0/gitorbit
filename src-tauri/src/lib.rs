@@ -14,9 +14,9 @@ use gitorbit_core::services::{RepositoryService, SettingsService};
 use gitorbit_core::{
     AppInfo, AppSettings, AppSettingsUpdate, BranchComparison, BranchInfo, CloneResult,
     CommandError, CommitDetails, CommitResult, DeviceFlowSession, DiffOutput, GitEnvironment,
-    GitHubAccount, GitHubProfile, GitHubRepoPage, GitIdentity, GitStatus, HistoryOutput,
-    PendingDeviceFlow, PollResult, RemoteInfo, RepoLockRegistry, RepositoryDetails,
-    RepositoryOperationState, RepositoryRecord,
+    GitHubAccount, GitHubProfile, GitHubPublishResult, GitHubRepoPage, GitIdentity,
+    GitRemoteManager, GitStatus, HistoryOutput, PendingDeviceFlow, PollResult, RemoteInfo,
+    RepoLockRegistry, RepositoryDetails, RepositoryOperationState, RepositoryRecord,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -140,9 +140,18 @@ fn app_get_environment() -> GitEnvironment {
 }
 
 /// Adds a repository by path. Validates, canonicalises, and persists to DB.
+/// Adds a repository already under Git version control. Use
+/// `repository_init` for plain (non-Git) folders.
 #[tauri::command]
 fn repository_add(state: State<AppState>, path: String) -> CmdResult<RepositoryRecord> {
     with_db(&state, |db| RepositoryService::add_repository(db, &path))
+}
+
+/// Initializes `git init` in a plain directory and registers it.
+/// Used when the user chooses "open as Git repository" for a non-Git folder.
+#[tauri::command]
+fn repository_init(state: State<AppState>, path: String) -> CmdResult<RepositoryRecord> {
+    with_db(&state, |db| RepositoryService::init_repository(db, &path))
 }
 
 /// Lists all registered repositories.
@@ -550,6 +559,80 @@ fn github_get_account_profile(
     })
 }
 
+/// Publishes a local repository to GitHub:
+/// 1. verifies the repo exists locally and has no `origin` yet,
+/// 2. creates the remote repo via the GitHub API (`POST /user/repos`),
+/// 3. adds `origin` pointing at it,
+/// 4. best-effort pushes the current branch with `--set-upstream`.
+///
+/// If step 4 fails (e.g. HEAD is unborn / git-level auth), the created remote
+/// repo and the configured origin are kept and the reason is returned as a
+/// warning — the user can finish from the status bar's Push button later.
+#[tauri::command]
+fn github_publish_repository(
+    state: State<AppState>,
+    account_id: String,
+    repo_id: String,
+    name: String,
+    description: Option<String>,
+    private: Option<bool>,
+) -> CmdResult<GitHubPublishResult> {
+    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+    let db = state
+        .db
+        .lock()
+        .map_err(|_| AppError::simple("DATABASE_ERROR", "Veritabanı kilidi alınamadı.", false))?;
+
+    // 1. Fail fast BEFORE creating anything on GitHub.
+    let record = RepositoryService::get_repository(&db, &repo_id).map_err(AppError::from)?;
+    let path = std::path::Path::new(&record.canonical_path);
+    let remotes = GitRemoteManager::list_remotes(path).map_err(AppError::from)?;
+    if remotes.iter().any(|r| r.name == "origin") {
+        return Err(AppError::simple(
+            "REMOTE_EXISTS",
+            "'origin' remote'u zaten tanımlı. Bu depo yayınlanmış sayılır — gönderim için Dışa Aktar (Push) kullanın.",
+            false,
+        ));
+    }
+
+    // 2. Create the repository on GitHub.
+    let created = state
+        .github
+        .create_remote_repo(
+            &db,
+            &account_id,
+            &name,
+            description.as_deref(),
+            private.unwrap_or(false),
+        )
+        .map_err(AppError::from)?;
+
+    // 3. Wire origin. If this fails the GitHub repo still exists — surface both facts.
+    if let Err(e) = GitRemoteManager::add(path, "origin", &created.clone_url) {
+        return Err(AppError::from(CommandError::new(
+            "PUBLISH_PARTIAL",
+            format!(
+                "GitHub deposu oluşturuldu ({}) ancak 'origin' eklenemedi: {}",
+                created.html_url, e.message
+            ),
+            true,
+        )));
+    }
+
+    // 4. Best-effort initial push (never forces).
+    let (pushed, warning) = match RepositoryService::push(&db, &repo_id, None, None, false, true) {
+        Ok(_) => (true, None),
+        Err(e) => (false, Some(e.message)),
+    };
+
+    Ok(GitHubPublishResult {
+        html_url: created.html_url,
+        clone_url: created.clone_url,
+        pushed,
+        warning,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Faz 7 — app info, settings, details, re-link, clone, merge, history detail
 // ---------------------------------------------------------------------------
@@ -710,6 +793,7 @@ pub fn run() {
             app_get_environment,
             app_get_info,
             repository_add,
+            repository_init,
             repository_list,
             repository_remove,
             repository_get_status,
@@ -754,6 +838,7 @@ pub fn run() {
             github_disconnect_account,
             github_list_repos,
             github_get_account_profile,
+            github_publish_repository,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

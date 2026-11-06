@@ -14,6 +14,7 @@ export const settingsGet = vi.fn();
 export const settingsUpdate = vi.fn();
 
 export const repositoryAdd = vi.fn();
+export const repositoryInit = vi.fn();
 export const repositoryList = vi.fn();
 export const repositoryRemove = vi.fn();
 export const repositoryGetStatus = vi.fn();
@@ -55,3 +56,4 @@ export const githubListAccounts = vi.fn();
 export const githubDisconnectAccount = vi.fn();
 export const githubListRepos = vi.fn();
 export const githubGetAccountProfile = vi.fn();
+export const githubPublishRepository = vi.fn();

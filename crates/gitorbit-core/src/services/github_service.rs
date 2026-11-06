@@ -24,8 +24,8 @@ use crate::db::Database;
 use crate::db::github_accounts::GitHubAccountDao;
 use crate::errors::CommandError;
 use crate::models::{
-    DeviceFlowSession, GitHubAccount, GitHubConnectionStatus, GitHubProfile, GitHubRepo,
-    GitHubRepoPage, PollResult,
+    DeviceFlowSession, GitHubAccount, GitHubConnectionStatus, GitHubCreatedRepo, GitHubProfile,
+    GitHubRepo, GitHubRepoPage, PollResult,
 };
 use chrono::Utc;
 use serde::Deserialize;
@@ -76,6 +76,16 @@ pub trait GitHubHttpClient: Send + Sync {
         page: u32,
         per_page: u32,
     ) -> Result<Vec<RawRepoResponse>, CommandError>;
+
+    /// Creates a new repository owned by the authenticated user
+    /// (`POST /user/repos`).
+    fn create_repo(
+        &self,
+        token: &str,
+        name: &str,
+        description: Option<&str>,
+        private: bool,
+    ) -> Result<RawCreatedRepo, CommandError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -155,6 +165,16 @@ pub struct RawRepoResponse {
 #[derive(Debug, Deserialize)]
 pub struct RawOwner {
     pub login: String,
+}
+
+/// Response of `POST /user/repos` (subset we need).
+#[derive(Debug, Clone, Deserialize)]
+pub struct RawCreatedRepo {
+    pub full_name: String,
+    pub html_url: String,
+    pub clone_url: String,
+    #[serde(default)]
+    pub private: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -279,6 +299,35 @@ impl GitHubHttpClient for RealGitHubHttpClient {
 
         resp.into_json::<Vec<RawRepoResponse>>()
             .map_err(|e| CommandError::network_error(format!("Repo listesi işlenemedi: {}", e)))
+    }
+
+    fn create_repo(
+        &self,
+        token: &str,
+        name: &str,
+        description: Option<&str>,
+        private: bool,
+    ) -> Result<RawCreatedRepo, CommandError> {
+        let body = serde_json::json!({
+            "name": name,
+            "description": description.unwrap_or(""),
+            "private": private,
+            "auto_init": false,
+            "has_issues": true,
+            "has_wiki": false,
+        });
+
+        let resp = ureq::post("https://api.github.com/user/repos")
+            .set("Authorization", &format!("Bearer {}", token))
+            .set("Accept", "application/vnd.github+json")
+            .set("X-GitHub-Api-Version", "2022-11-28")
+            .set("User-Agent", "GitOrbit/0.1")
+            .send_json(body)
+            .map_err(map_ureq_error)?;
+
+        resp.into_json::<RawCreatedRepo>().map_err(|e| {
+            CommandError::network_error(format!("Repo oluşturma yanıtı işlenemedi: {}", e))
+        })
     }
 }
 
@@ -596,6 +645,48 @@ impl GitHubService {
             page,
             per_page,
             has_more,
+        })
+    }
+
+    /// Creates a new repository for the connected account on GitHub and
+    /// returns its public metadata. The token stays inside this call.
+    pub fn create_remote_repo(
+        &self,
+        db: &Database,
+        account_id: &str,
+        name: &str,
+        description: Option<&str>,
+        private: bool,
+    ) -> Result<GitHubCreatedRepo, CommandError> {
+        let name = name.trim();
+        let valid = !name.is_empty()
+            && name.len() <= 100
+            && !name.starts_with('.')
+            && !name.starts_with('-')
+            && !name.ends_with('.')
+            && name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+        if !valid {
+            return Err(CommandError::new(
+                "REPO_NAME_INVALID",
+                "Depo adı boş olamaz ve yalnızca harf, rakam, '-', '_', '.' içerebilir (en fazla 100 karakter).",
+                false,
+            ));
+        }
+
+        let (_account, token) = self.account_with_token(db, account_id)?;
+        let created = self
+            .client
+            .create_repo(&token, name, description, private)?;
+
+        let _ = db.with_conn(|conn| GitHubAccountDao::touch_last_used(conn, account_id));
+
+        Ok(GitHubCreatedRepo {
+            full_name: created.full_name,
+            html_url: created.html_url,
+            clone_url: created.clone_url,
+            private: created.private,
         })
     }
 

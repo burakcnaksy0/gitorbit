@@ -186,3 +186,45 @@ fn test_status_parser_nul_delimited_renamed_and_conflicted() {
     assert_eq!(unstaged.len(), 1);
     assert_eq!(unstaged[0].status, ChangedFileStatus::Conflicted);
 }
+
+// ---------------------------------------------------------------------------
+// init_repository: plain folder -> git init -> registered record (Faz 8 UX)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_init_repository_creates_and_registers() {
+    let dir = tempdir().expect("tempdir");
+    let plain = dir.path().join("yeniproje");
+    fs::create_dir(&plain).expect("create plain dir");
+    fs::write(plain.join("readme.md"), "merhaba").expect("write file");
+
+    let db = Database::in_memory().expect("in-memory DB");
+    let record = RepositoryService::init_repository(&db, &plain.to_string_lossy())
+        .expect("init_repository should succeed");
+
+    assert!(plain.join(".git").exists(), "git init .git oluşturmalı");
+    assert_eq!(record.display_name, "yeniproje");
+
+    // Registered exactly once and now openable like any repository.
+    let listed = RepositoryService::list_repositories(&db).expect("list");
+    assert_eq!(listed.len(), 1);
+    let status = RepositoryService::get_repository_status(&db, &record.id);
+    assert!(status.is_ok(), "init sonrası durum okunabilmeli");
+}
+
+#[test]
+fn test_init_repository_rejects_existing_repo() {
+    let dir = tempdir().expect("tempdir");
+    let repo = dir.path().join("zatenrepo");
+    fs::create_dir(&repo).expect("create dir");
+    Command::new("git")
+        .current_dir(&repo)
+        .args(["init"])
+        .output()
+        .expect("git init");
+
+    let db = Database::in_memory().expect("in-memory DB");
+    let err = RepositoryService::init_repository(&db, &repo.to_string_lossy())
+        .expect_err("mevcut depoya init yapılmamalı");
+    assert_eq!(err.code, "ALREADY_A_GIT_REPOSITORY");
+}

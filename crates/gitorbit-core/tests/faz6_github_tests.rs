@@ -18,8 +18,8 @@ use gitorbit_core::credential_store::InMemoryCredentialStore;
 use gitorbit_core::db::Database;
 use gitorbit_core::models::{GitHubConnectionStatus, PollResult};
 use gitorbit_core::services::github_service::{
-    GitHubHttpClient, GitHubService, PendingDeviceFlow, RawDeviceFlowResponse, RawOwner,
-    RawPollResponse, RawRepoResponse, RawUserResponse,
+    GitHubHttpClient, GitHubService, PendingDeviceFlow, RawCreatedRepo, RawDeviceFlowResponse,
+    RawOwner, RawPollResponse, RawRepoResponse, RawUserResponse,
 };
 use std::sync::Mutex;
 
@@ -197,6 +197,21 @@ impl GitHubHttpClient for MockGitHubHttpClient {
                 },
             })
             .collect())
+    }
+
+    fn create_repo(
+        &self,
+        _token: &str,
+        name: &str,
+        _description: Option<&str>,
+        private: bool,
+    ) -> Result<RawCreatedRepo, CommandError> {
+        Ok(RawCreatedRepo {
+            full_name: format!("testuser/{}", name),
+            html_url: format!("https://github.com/testuser/{}", name),
+            clone_url: format!("https://github.com/testuser/{}.git", name),
+            private,
+        })
     }
 }
 
@@ -593,5 +608,51 @@ fn test_get_account_profile_expired_after_disconnect() {
     let err = svc
         .get_account_profile(&db, &account.id)
         .expect_err("profile must fail after disconnect");
+    assert_eq!(err.code, "ACCOUNT_NOT_FOUND");
+}
+
+// ---------------------------------------------------------------------------
+// Publish: create_remote_repo via API abstraction
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_create_remote_repo_requires_connected_account() {
+    let db = make_db();
+    let svc = make_service(MockGitHubHttpClient::new_with_success_on_first_poll());
+
+    // Connect first so the credential exists.
+    let (_session, pending) = svc.begin_device_flow().expect("begin_device_flow");
+    let session_token = pending.session_token.clone();
+    let account = match svc
+        .poll_device_flow(&db, &pending, &session_token)
+        .expect("poll")
+    {
+        PollResult::Success { account } => account,
+        PollResult::Pending => panic!("Expected success on first poll"),
+    };
+
+    let created = svc
+        .create_remote_repo(&db, &account.id, "yeni-proje", Some("aciklama"), false)
+        .expect("create_remote_repo");
+    assert_eq!(created.full_name, "testuser/yeni-proje");
+    assert!(!created.private);
+    assert!(created.clone_url.ends_with("yeni-proje.git"));
+
+    // Invalid names never reach the network.
+    for bad in ["", "  ", "geçersiz ad", "adi/", "nokta.", "-tire"] {
+        let err = svc
+            .create_remote_repo(&db, &account.id, bad, None, false)
+            .expect_err("isim doğrulaması çalışmalı");
+        assert_eq!(
+            err.code, "REPO_NAME_INVALID",
+            "kabul edilen isim: {:?}",
+            bad
+        );
+    }
+
+    // Unknown account → ACCOUNT_NOT_FOUND.
+    let err = svc
+        .create_remote_repo(&db, "nope", "ok-ad", None, false)
+        .expect_err("hesap yoksa hata");
     assert_eq!(err.code, "ACCOUNT_NOT_FOUND");
 }

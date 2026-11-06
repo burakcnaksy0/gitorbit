@@ -5,6 +5,10 @@ import { StatusBar } from "./StatusBar";
 import { ActionNoticeModal } from "../common/ActionNoticeModal";
 import { WelcomeView } from "../../features/welcome/WelcomeView";
 import { RepositoryListView } from "../../features/repositories/RepositoryListView";
+import {
+  NotGitChoiceModal,
+  PublishRepoModal,
+} from "../../features/repositories/PublishDialogs";
 import { ChangesView } from "../../features/changes/ChangesView";
 import { HistoryView } from "../../features/history/HistoryView";
 import { BranchesView } from "../../features/branches/BranchesView";
@@ -25,6 +29,7 @@ import {
   appGetEnvironment,
   appGetInfo,
   repositoryAdd,
+  repositoryInit,
   repositoryClone,
   repositoryFetch,
   repositoryPull,
@@ -107,6 +112,13 @@ export const Shell: React.FC = () => {
 
   const [isLoadingRepos, setIsLoadingRepos] = useState(true);
   const [reposError, setReposError] = useState<string | null>(null);
+  // "Folder is not a Git repo" choice flow + publish-to-GitHub dialog.
+  const [notGitPath, setNotGitPath] = useState<string | null>(null);
+  const [initBusy, setInitBusy] = useState(false);
+  const [publishTarget, setPublishTarget] = useState<{
+    repoId: string;
+    name: string;
+  } | null>(null);
 
   const [environment, setEnvironment] = useState<GitEnvironment | null>(null);
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
@@ -269,11 +281,63 @@ export const Shell: React.FC = () => {
         setCurrentRepoId(record.id);
         setActiveTab("changes");
       } catch (err) {
+        // Plain folder: offer to git-init it (locally or published to GitHub)
+        // instead of dead-ending with NOT_A_GIT_REPOSITORY.
+        const code = (err as AppError)?.code;
+        if (code === "NOT_A_GIT_REPOSITORY") {
+          setNotGitPath(path);
+          return;
+        }
         showError("Depo Ekle", err);
       }
     },
     [loadRepositories, showError]
   );
+
+  // "Git deposu olarak başlat" — init + register, then continue normally.
+  const handleInitLocal = useCallback(async () => {
+    if (!notGitPath) return;
+    setInitBusy(true);
+    try {
+      const record = await repositoryInit(notGitPath);
+      setNotGitPath(null);
+      await loadRepositories();
+      setCurrentRepoId(record.id);
+      setActiveTab("changes");
+    } catch (err) {
+      setNotGitPath(null);
+      showError("Git Deposu Başlat", err);
+    } finally {
+      setInitBusy(false);
+    }
+  }, [notGitPath, loadRepositories, showError]);
+
+  // "Başlat ve GitHub'da yayınla" — init first, then open the publish form.
+  const handleInitAndPublish = useCallback(async () => {
+    if (!notGitPath) return;
+    setInitBusy(true);
+    try {
+      const record = await repositoryInit(notGitPath);
+      setNotGitPath(null);
+      await loadRepositories();
+      setCurrentRepoId(record.id);
+      setPublishTarget({ repoId: record.id, name: record.display_name });
+    } catch (err) {
+      setNotGitPath(null);
+      showError("Git Deposu Başlat", err);
+    } finally {
+      setInitBusy(false);
+    }
+  }, [notGitPath, loadRepositories, showError]);
+
+  // Later publishing for any registered repo that has no origin yet.
+  const handlePublishRequest = useCallback((repo: RepositorySummary) => {
+    setPublishTarget({ repoId: repo.id, name: repo.name });
+  }, []);
+
+  const handlePublished = useCallback(async () => {
+    await loadRepositories();
+  }, [loadRepositories]);
 
   const handleAddRepository = useCallback(async () => {
     try {
@@ -468,6 +532,7 @@ export const Shell: React.FC = () => {
                 showError("Dosya Yöneticisinde Aç", err)
               );
             }}
+            onPublishRequest={handlePublishRequest}
           />
         );
       case "changes":
@@ -562,6 +627,26 @@ export const Shell: React.FC = () => {
         onPullClick={() => void handlePull()}
         onPushClick={() => void handlePush()}
       />
+
+      {notGitPath && (
+        <NotGitChoiceModal
+          path={notGitPath}
+          busy={initBusy}
+          onInitLocal={() => void handleInitLocal()}
+          onInitAndPublish={() => void handleInitAndPublish()}
+          onClose={() => setNotGitPath(null)}
+        />
+      )}
+
+      {publishTarget && (
+        <PublishRepoModal
+          key={publishTarget.repoId}
+          repoId={publishTarget.repoId}
+          defaultName={publishTarget.name}
+          onClose={() => setPublishTarget(null)}
+          onPublished={() => void handlePublished()}
+        />
+      )}
 
       <ActionNoticeModal
         isOpen={notice.isOpen}

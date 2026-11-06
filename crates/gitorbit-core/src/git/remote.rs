@@ -86,6 +86,54 @@ impl GitRemoteManager {
         Ok(remotes)
     }
 
+    /// Adds a new remote (`git remote add <name> <url>`).
+    /// Rejects duplicate remote names and option-looking URLs (argument
+    /// injection guard); arguments are always passed as an argv array.
+    pub fn add(repo_dir: &Path, name: &str, url: &str) -> Result<Vec<RemoteInfo>, CommandError> {
+        Self::validate_name(name, "Remote adı")?;
+
+        let url = url.trim();
+        if url.is_empty() {
+            return Err(CommandError::invalid_path("Remote bos olamaz"));
+        }
+        if url.starts_with('-') || url.contains(char::is_whitespace) {
+            return Err(CommandError::invalid_path(
+                "Remote geçersiz bir adres içeriyor.",
+            ));
+        }
+        let scheme_ok = url.starts_with("https://")
+            || url.starts_with("http://")
+            || url.starts_with("git://")
+            || url.starts_with("ssh://")
+            || url.starts_with("git@");
+        if !scheme_ok {
+            return Err(CommandError::invalid_path(
+                "Remote adresi http(s)://, git://, ssh:// veya git@ ile başlamalıdır.",
+            ));
+        }
+
+        let existing = Self::list_remotes(repo_dir)?;
+        if existing.iter().any(|r| r.name == name) {
+            return Err(CommandError::new(
+                "REMOTE_EXISTS",
+                format!("'{}' adında bir remote zaten tanımlı.", name),
+                false,
+            ));
+        }
+
+        let output = GitAdapter::execute(repo_dir, &["remote", "add", name, url])?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(CommandError::new(
+                "GIT_COMMAND_FAILED",
+                format!("Remote eklenemedi: {}", stderr.trim()),
+                true,
+            ));
+        }
+
+        Self::list_remotes(repo_dir)
+    }
+
     /// Fetches changes from a remote without modifying working tree files.
     /// Updates remote-tracking references and refreshes upstream ahead/behind counts.
     pub fn fetch(repo_dir: &Path, remote: Option<&str>) -> Result<GitStatus, CommandError> {

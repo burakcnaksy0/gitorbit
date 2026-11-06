@@ -214,6 +214,28 @@ pub struct GitHubProfile {
     pub created_at: Option<String>,
 }
 
+/// Result of creating a repository on GitHub via `POST /user/repos`.
+/// Public metadata only — never token material.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GitHubCreatedRepo {
+    pub full_name: String,
+    pub html_url: String,
+    pub clone_url: String,
+    pub private: bool,
+}
+
+/// Outcome of the "publish local repository to GitHub" flow:
+/// the remote repo is created and `origin` is configured; `pushed` reports
+/// whether commits were actually transferred (false when HEAD is unborn or
+/// git-level push failed — the created remote repo remains usable).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GitHubPublishResult {
+    pub html_url: String,
+    pub clone_url: String,
+    pub pushed: bool,
+    pub warning: Option<String>,
+}
+
 /// A single GitHub repository item returned from the API.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GitHubRepo {

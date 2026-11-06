@@ -75,6 +75,53 @@ impl RepositoryService {
         Ok(record)
     }
 
+    /// Initializes a NEW Git repository in an existing plain directory
+    /// (`git init`, honoring the user's `init.defaultBranch`), then registers
+    /// it like `add_repository`. Used when the user adds a folder that is not
+    /// yet a Git repository.
+    pub fn init_repository(
+        db: &Database,
+        raw_path: &str,
+    ) -> Result<RepositoryRecord, CommandError> {
+        let trimmed = raw_path.trim();
+        if trimmed.is_empty() {
+            return Err(CommandError::invalid_path("Repository yolu bos olamaz"));
+        }
+
+        let input_path = Path::new(trimmed);
+        if !input_path.exists() {
+            return Err(CommandError::invalid_path(format!(
+                "Belirtilen yol mevcut değil: {}",
+                input_path.display()
+            )));
+        }
+        if !input_path.is_dir() {
+            return Err(CommandError::invalid_path(format!(
+                "Belirtilen yol bir dizin değil: {}",
+                input_path.display()
+            )));
+        }
+
+        // Refuse if the folder (or a parent) is already a Git repository —
+        // `git init` there would be a no-op or silently nest repositories.
+        if GitAdapter::get_repository_root(input_path).is_ok() {
+            return Err(CommandError::new(
+                "ALREADY_A_GIT_REPOSITORY",
+                "Bu klasör (veya bir üst klasörü) zaten bir Git deposu.",
+                false,
+            ));
+        }
+
+        let canonical_input = input_path.canonicalize().map_err(|e| {
+            CommandError::invalid_path(format!("Yol çözümlenemedi (canonicalize): {}", e))
+        })?;
+
+        GitAdapter::execute(&canonical_input, &["init"])
+            .map_err(|e| CommandError::io_error(format!("git init basarisiz: {}", e.message)))?;
+
+        Self::add_repository(db, &canonical_input.to_string_lossy())
+    }
+
     /// Lists all registered repositories from the database.
     ///
     /// `missing` is computed by checking the filesystem so the UI can offer

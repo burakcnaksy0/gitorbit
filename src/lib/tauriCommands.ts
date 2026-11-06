@@ -25,6 +25,7 @@ import type {
   GitEnvironment,
   GitHubAccount,
   GitHubProfile,
+  GitHubPublishResult,
   GitHubRepoPage,
   GitIdentity,
   GitStatus,
@@ -84,6 +85,14 @@ export async function settingsUpdate(update: AppSettingsUpdate): Promise<AppSett
 /** Adds a repository by path. Returns the created record. */
 export async function repositoryAdd(path: string): Promise<RepositoryRecord> {
   return tauriCall<RepositoryRecord>("repository_add", { path });
+}
+
+/**
+ * Initializes `git init` in a plain (non-Git) directory and registers it.
+ * Throws `ALREADY_A_GIT_REPOSITORY` if the folder already is a repository.
+ */
+export async function repositoryInit(path: string): Promise<RepositoryRecord> {
+  return tauriCall<RepositoryRecord>("repository_init", { path });
 }
 
 /** Lists all registered repositories. */
@@ -504,5 +513,29 @@ export async function githubListRepos(
 export async function githubGetAccountProfile(accountId: string): Promise<GitHubProfile> {
   return tauriCall<GitHubProfile>("github_get_account_profile", {
     accountId,
+  });
+}
+
+/**
+ * Publishes a local repository to GitHub: creates the remote repo under the
+ * chosen account, configures `origin`, and best-effort pushes the current
+ * branch. Check `result.pushed` / `result.warning` for the outcome details.
+ *
+ * - Throws `REMOTE_EXISTS` if the repo already has an `origin`.
+ * - Throws `REPO_NAME_INVALID` for invalid repository names.
+ */
+export async function githubPublishRepository(
+  accountId: string,
+  repoId: string,
+  name: string,
+  description?: string | null,
+  isPrivate = false
+): Promise<GitHubPublishResult> {
+  return tauriCall<GitHubPublishResult>("github_publish_repository", {
+    accountId,
+    repoId,
+    name,
+    description: description ?? null,
+    private: isPrivate,
   });
 }
