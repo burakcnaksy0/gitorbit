@@ -1,0 +1,123 @@
+name: GitOrbit CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    name: Frontend Quality Gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Code format check (Prettier)
+        run: npm run format:check
+
+      - name: Static lint check (ESLint)
+        run: npm run lint
+
+      - name: TypeScript typecheck
+        run: npm run typecheck
+
+      - name: Unit, component, e2e & a11y tests (Vitest)
+        run: npm test
+
+      - name: Frontend production build
+        run: npm run build
+
+  core-rust:
+    name: GitOrbit Core Quality Gates (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies (libdbus)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev pkg-config
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: crates/gitorbit-core -> target
+
+      - name: Core format check
+        run: cargo fmt --manifest-path crates/gitorbit-core/Cargo.toml -- --check
+
+      - name: Core Clippy lint
+        run: cargo clippy --manifest-path crates/gitorbit-core/Cargo.toml --features test-support --all-targets -- -D warnings
+
+      - name: Core unit & acceptance tests (Faz 2, 3, 4, 5, 6)
+        run: cargo test --manifest-path crates/gitorbit-core/Cargo.toml --features test-support
+
+  tauri-platform-matrix:
+    name: Tauri Desktop Build (${{ matrix.platform.name }})
+    needs: [frontend, core-rust]
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - name: Linux
+            os: ubuntu-latest
+          - name: macOS
+            os: macos-latest
+          - name: Windows
+            os: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libdbus-1-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            pkg-config
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Tauri crate checks (Formatting & Clippy)
+        if: runner.os == 'Linux'
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+          cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Desktop Application Build Check
+        run: npm run tauri build -- --no-bundle

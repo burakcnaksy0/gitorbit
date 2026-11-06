@@ -1,0 +1,21 @@
+pub mod adapter;
+pub mod branch;
+pub mod clone;
+pub mod commit;
+pub mod diff;
+pub mod history;
+pub mod merge;
+pub mod operation_state;
+pub mod remote;
+pub mod status;
+
+pub use adapter::GitAdapter;
+pub use branch::GitBranchManager;
+pub use clone::GitCloneManager;
+pub use commit::GitCommitManager;
+pub use diff::GitDiffParser;
+pub use history::GitHistoryManager;
+pub use merge::GitMergeManager;
+pub use operation_state::GitOperationStateManager;
+pub use remote::GitRemoteManager;
+pub use status::GitStatusParser;

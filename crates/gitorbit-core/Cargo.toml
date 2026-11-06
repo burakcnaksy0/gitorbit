@@ -1,0 +1,30 @@
+[package]
+name = "gitorbit-core"
+version = "0.1.0"
+edition = "2024"
+description = "GitOrbit core domain, Git CLI adapter, and SQLite storage"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.33", features = ["bundled"] }
+chrono = { version = "0.4", features = ["serde"] }
+# GitHub OAuth device flow HTTP client (sync, no tokio required)
+ureq = { version = "2", features = ["json"] }
+# OS credential store — tokens never go into SQLite
+keyring = "2"
+# UUID v4 for account IDs and session tokens
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3.17"
+
+[features]
+# Enables test-only helpers (InMemoryCredentialStore) for integration tests.
+# Never enable this in a production build.
+test-support = []
+
+[[test]]
+name = "faz6_github_tests"
+path = "tests/faz6_github_tests.rs"
+required-features = ["test-support"]

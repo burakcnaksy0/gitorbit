@@ -1,0 +1,390 @@
+use crate::errors::CommandError;
+use crate::git::adapter::GitAdapter;
+use crate::git::status::GitStatusParser;
+use crate::models::{GitStatus, RemoteInfo, RepositoryOperationState};
+use std::collections::HashMap;
+use std::path::Path;
+use std::time::Duration;
+
+pub struct GitRemoteManager;
+
+impl GitRemoteManager {
+    /// Validates a remote or branch name to protect against command-line argument injection.
+    pub fn validate_name(name: &str, field_name: &str) -> Result<(), CommandError> {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err(CommandError::new(
+                "VALIDATION_ERROR",
+                format!("{} boş olamaz.", field_name),
+                true,
+            ));
+        }
+        if trimmed.starts_with('-') {
+            return Err(CommandError::new(
+                "VALIDATION_ERROR",
+                format!("{} '-' ile başlayamaz.", field_name),
+                true,
+            ));
+        }
+        if trimmed.chars().any(|c| c.is_whitespace() || c.is_control()) {
+            return Err(CommandError::new(
+                "VALIDATION_ERROR",
+                format!("{} boşluk veya kontrol karakteri içeremez.", field_name),
+                true,
+            ));
+        }
+        Ok(())
+    }
+
+    /// Lists all remotes configured for the repository.
+    pub fn list_remotes(repo_dir: &Path) -> Result<Vec<RemoteInfo>, CommandError> {
+        let output = GitAdapter::execute(repo_dir, &["remote", "-v"])?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(CommandError::new(
+                "GIT_COMMAND_FAILED",
+                format!("Remote listesi alınamadı: {}", stderr.trim()),
+                true,
+            ));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut map: HashMap<String, (Option<String>, Option<String>)> = HashMap::new();
+        let mut ordered_names = Vec::new();
+
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 3 {
+                let name = parts[0].to_string();
+                let url = parts[1].to_string();
+                let kind = parts[2];
+
+                if !map.contains_key(&name) {
+                    ordered_names.push(name.clone());
+                    map.insert(name.clone(), (None, None));
+                }
+
+                let entry = map.get_mut(&name).expect("Entry was inserted");
+                if kind.contains("fetch") {
+                    entry.0 = Some(url);
+                } else if kind.contains("push") {
+                    entry.1 = Some(url);
+                }
+            }
+        }
+
+        let mut remotes = Vec::new();
+        for name in ordered_names {
+            let (fetch_url, push_url) = map.remove(&name).unwrap_or((None, None));
+            remotes.push(RemoteInfo {
+                name,
+                fetch_url,
+                push_url,
+            });
+        }
+
+        Ok(remotes)
+    }
+
+    /// Fetches changes from a remote without modifying working tree files.
+    /// Updates remote-tracking references and refreshes upstream ahead/behind counts.
+    pub fn fetch(repo_dir: &Path, remote: Option<&str>) -> Result<GitStatus, CommandError> {
+        let mut args = vec!["fetch", "--prune"];
+
+        let remotes = Self::list_remotes(repo_dir)?;
+
+        let target_remote = match remote {
+            Some(r) => {
+                Self::validate_name(r, "Remote adı")?;
+                r.to_string()
+            }
+            None => {
+                if remotes.is_empty() {
+                    return Err(CommandError::new(
+                        "NO_REMOTES",
+                        "Depoda tanımlı bir uzak sunucu (remote) bulunamadı.",
+                        true,
+                    ));
+                }
+                // Prefer 'origin', else first remote
+                if remotes.iter().any(|r| r.name == "origin") {
+                    "origin".to_string()
+                } else {
+                    remotes[0].name.clone()
+                }
+            }
+        };
+
+        args.push(&target_remote);
+
+        let output = GitAdapter::execute_with_env_and_timeout(
+            repo_dir,
+            &args,
+            &[("GIT_TERMINAL_PROMPT", "0")],
+            Some(Duration::from_secs(30)),
+        )?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(Self::map_remote_error(&stderr, "Fetch"));
+        }
+
+        GitStatusParser::get_status(repo_dir)
+    }
+
+    /// Pulls changes from upstream or specified remote/branch into the current branch.
+    /// Preserves safety invariants:
+    /// 1. Rejects if no upstream exists and none is specified (`NO_UPSTREAM`).
+    /// 2. Never performs destructive reset (`git reset --hard`) on conflict.
+    /// 3. Detects conflicts and transitions repository state to `MergeInProgress`.
+    pub fn pull(
+        repo_dir: &Path,
+        remote: Option<&str>,
+        branch: Option<&str>,
+        strategy: Option<&str>,
+    ) -> Result<GitStatus, CommandError> {
+        let status_before = GitStatusParser::get_status(repo_dir)?;
+
+        if status_before.upstream.is_none() && remote.is_none() {
+            return Err(CommandError::new(
+                "NO_UPSTREAM",
+                "Aktif dal için upstream bilgisi bulunamadı. Lütfen önce upstream dalını belirleyin veya remote/branch belirtin.",
+                true,
+            ));
+        }
+
+        let mut args = vec!["pull", "--no-stat"];
+        if let Some(strat) = strategy {
+            if strat == "rebase" {
+                args.push("--rebase");
+            } else {
+                args.push("--no-rebase");
+            }
+        } else {
+            args.push("--no-rebase");
+        }
+
+        let remote_str;
+        let branch_str;
+        if let Some(r) = remote {
+            Self::validate_name(r, "Remote adı")?;
+            remote_str = r.to_string();
+            args.push(&remote_str);
+
+            if let Some(b) = branch {
+                Self::validate_name(b, "Branch adı")?;
+                branch_str = b.to_string();
+                args.push(&branch_str);
+            }
+        }
+
+        let output = GitAdapter::execute_with_env_and_timeout(
+            repo_dir,
+            &args,
+            &[("GIT_TERMINAL_PROMPT", "0")],
+            Some(Duration::from_secs(45)),
+        )?;
+
+        // Always inspect refreshed repository status and operation state
+        let status_after = GitStatusParser::get_status(repo_dir)?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+
+            // Check if merge conflicts were created
+            if status_after.operation_state == RepositoryOperationState::MergeInProgress
+                || !status_after.conflicted_files.is_empty()
+                || stderr.contains("Automatic merge failed")
+                || stderr.contains("CONFLICT")
+            {
+                // CRITICAL: DO NOT call `git reset --hard` or auto-discard!
+                // Report conflict presence while leaving the repository in MergeInProgress.
+                let conflict_list = status_after.conflicted_files.join(", ");
+                return Err(CommandError::new(
+                    "CONFLICTS_PRESENT",
+                    format!(
+                        "Uzak depodaki değişiklikler çekilirken çakışma oluştu. Çakışan dosyalar: {}",
+                        if conflict_list.is_empty() {
+                            "belirlenemedi"
+                        } else {
+                            &conflict_list
+                        }
+                    ),
+                    true,
+                ));
+            }
+
+            // Check if pull was blocked by uncommitted local changes
+            if stderr
+                .contains("Your local changes to the following files would be overwritten by merge")
+                || stderr.contains("Please commit your changes or stash them")
+                || stderr.contains("Cannot pull with rebase: You have unstaged changes")
+            {
+                return Err(CommandError::new(
+                    "DIRTY_WORKTREE",
+                    "Çalışma dizininde kaydedilmemiş değişiklikler var. Pull yapmadan önce lütfen değişikliklerinizi commit edin veya stash'leyin.",
+                    true,
+                ));
+            }
+
+            // Check if no tracking information exists
+            if stderr.contains("There is no tracking information for the current branch") {
+                return Err(CommandError::new(
+                    "NO_UPSTREAM",
+                    "Aktif dal için upstream bilgisi bulunamadı.",
+                    true,
+                ));
+            }
+
+            return Err(Self::map_remote_error(&stderr, "Pull"));
+        }
+
+        Ok(status_after)
+    }
+
+    /// Pushes current branch commits to the remote.
+    /// Preserves safety invariants:
+    /// 1. Rejects if no upstream exists and set_upstream is false (`NO_UPSTREAM`).
+    /// 2. Rejects non-fast-forward updates (`REMOTE_REJECTED`) and NEVER automatically converts to `--force`.
+    /// 3. Force push (if explicitly requested by caller) uses `--force-with-lease`.
+    pub fn push(
+        repo_dir: &Path,
+        remote: Option<&str>,
+        branch: Option<&str>,
+        force: bool,
+        set_upstream: bool,
+    ) -> Result<GitStatus, CommandError> {
+        let status_before = GitStatusParser::get_status(repo_dir)?;
+
+        let current_branch = status_before.branch.clone().ok_or_else(|| {
+            CommandError::new(
+                "INVALID_STATE",
+                "Detached HEAD durumunda doğrudan push yapılamaz. Lütfen önce bir dal oluşturun veya seçin.",
+                true,
+            )
+        })?;
+
+        if status_before.upstream.is_none() && !set_upstream && remote.is_none() {
+            return Err(CommandError::new(
+                "NO_UPSTREAM",
+                "Bu dalın henüz bir upstream dalı bulunmuyor. Dalı uzak depoya göndermek için publish/set-upstream seçeneğini kullanın.",
+                true,
+            ));
+        }
+
+        let mut args = vec!["push"];
+        if set_upstream {
+            args.push("-u");
+        }
+        if force {
+            // Spec 4.12: "--force-with-lease tercih edilmeli"
+            args.push("--force-with-lease");
+        }
+
+        let target_remote = match remote {
+            Some(r) => {
+                Self::validate_name(r, "Remote adı")?;
+                r.to_string()
+            }
+            None => {
+                // If upstream is set (e.g., "origin/main"), extract remote name
+                if let Some(ref u) = status_before.upstream
+                    && let Some((rem, _)) = u.split_once('/')
+                {
+                    rem.to_string()
+                } else {
+                    "origin".to_string()
+                }
+            }
+        };
+        args.push(&target_remote);
+
+        let target_branch = match branch {
+            Some(b) => {
+                Self::validate_name(b, "Branch adı")?;
+                b.to_string()
+            }
+            None => current_branch,
+        };
+        args.push(&target_branch);
+
+        let output = GitAdapter::execute_with_env_and_timeout(
+            repo_dir,
+            &args,
+            &[("GIT_TERMINAL_PROMPT", "0")],
+            Some(Duration::from_secs(45)),
+        )?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+
+            // CRITICAL ACCEPTANCE CRITERION: Non-fast-forward push must NOT be auto-forced.
+            if stderr.contains("[rejected]")
+                || stderr.contains("non-fast-forward")
+                || stderr.contains("fetch first")
+                || stderr
+                    .contains("Updates were rejected because the remote contains work that you do")
+            {
+                return Err(CommandError::new(
+                    "REMOTE_REJECTED",
+                    "Uzak depo güncellemeyi reddetti (non-fast-forward). Uzak depoda henüz yerelinizde bulunmayan yeni commit'ler var. Lütfen önce pull yaparak değişiklikleri birleştirin.",
+                    true,
+                ));
+            }
+
+            return Err(Self::map_remote_error(&stderr, "Push"));
+        }
+
+        GitStatusParser::get_status(repo_dir)
+    }
+
+    /// Maps Git stderr output to structured, user-friendly CommandErrors.
+    fn map_remote_error(stderr: &str, operation: &str) -> CommandError {
+        let trimmed = stderr.trim();
+
+        if trimmed.contains("Could not resolve host")
+            || trimmed.contains("Failed to connect to")
+            || trimmed.contains("Connection timed out")
+            || trimmed.contains("Network is unreachable")
+            || trimmed.contains("unable to access")
+        {
+            return CommandError::new(
+                "NETWORK_ERROR",
+                format!("Ağ bağlantı hatası oluştu: {}", trimmed),
+                true,
+            );
+        }
+
+        if trimmed.contains("Authentication failed")
+            || trimmed.contains("Permission denied (publickey)")
+            || trimmed.contains("terminal prompts disabled")
+            || trimmed.contains("fatal: could not read Username")
+            || trimmed.contains("fatal: could not read Password")
+        {
+            return CommandError::new(
+                "AUTH_REQUIRED",
+                format!(
+                    "Uzak sunucu kimlik doğrulaması başarısız oldu veya yetki yetersiz: {}",
+                    trimmed
+                ),
+                true,
+            );
+        }
+
+        if trimmed.contains("does not appear to be a git repository")
+            || trimmed.contains("Could not read from remote repository")
+        {
+            return CommandError::new(
+                "REMOTE_NOT_FOUND",
+                format!("Uzak depo bulunamadı veya erişilemedi: {}", trimmed),
+                true,
+            );
+        }
+
+        CommandError::new(
+            "GIT_COMMAND_FAILED",
+            format!("{} işlemi başarısız oldu: {}", operation, trimmed),
+            true,
+        )
+    }
+}

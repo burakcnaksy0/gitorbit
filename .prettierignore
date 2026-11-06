@@ -1,0 +1,9 @@
+dist
+node_modules
+target
+**/target
+src-tauri/target
+src-tauri/gen
+crates/**/target
+docs
+package-lock.json
