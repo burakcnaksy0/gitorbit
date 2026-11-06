@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
 :root {
+  /* Native form controls (select popups, scrollbars, date pickers) follow
+     the dark theme in WebKitGTK/WebView2 instead of the light system theme. */
+  color-scheme: dark;
+
   --font-sans:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
     sans-serif;

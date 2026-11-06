@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   AlertCircle,
   CheckCircle,
+  ChevronDown,
   ExternalLink,
   FolderGit2,
   Loader2,
@@ -277,18 +278,21 @@ export const PublishRepoModal: React.FC<PublishRepoModalProps> = ({
             {accounts.length > 1 && (
               <label className="block text-xs text-slate-400 space-y-1">
                 Hesap
-                <select
-                  id="publish-account"
-                  value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
-                  className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-sky-400"
-                >
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      @{a.login}
-                    </option>
-                  ))}
-                </select>
+                <span className="relative block">
+                  <select
+                    id="publish-account"
+                    value={accountId}
+                    onChange={(e) => setAccountId(e.target.value)}
+                    className="w-full appearance-none rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 pr-9 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-sky-400"
+                  >
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id} className="bg-slate-900 text-slate-100">
+                        @{a.login}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                </span>
               </label>
             )}
 
