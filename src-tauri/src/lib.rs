@@ -608,7 +608,12 @@ fn github_publish_repository(
         .map_err(AppError::from)?;
 
     // 3. Wire origin. If this fails the GitHub repo still exists — surface both facts.
-    if let Err(e) = GitRemoteManager::add(path, "origin", &created.clone_url) {
+    // Hesap için SSH host alias tanımlıysa (ssh_hosts.toml) SSH adresi tercih edilir.
+    let remote_url = created
+        .ssh_remote
+        .as_deref()
+        .unwrap_or(created.clone_url.as_str());
+    if let Err(e) = GitRemoteManager::add(path, "origin", remote_url) {
         return Err(AppError::from(CommandError::new(
             "PUBLISH_PARTIAL",
             format!(

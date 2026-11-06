@@ -29,6 +29,7 @@ use crate::models::{
 };
 use chrono::Utc;
 use serde::Deserialize;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
@@ -173,6 +174,8 @@ pub struct RawCreatedRepo {
     pub full_name: String,
     pub html_url: String,
     pub clone_url: String,
+    #[serde(default)]
+    pub ssh_url: String,
     #[serde(default)]
     pub private: bool,
 }
@@ -675,18 +678,24 @@ impl GitHubService {
             ));
         }
 
-        let (_account, token) = self.account_with_token(db, account_id)?;
+        let (account, token) = self.account_with_token(db, account_id)?;
         let created = self
             .client
             .create_repo(&token, name, description, private)?;
 
         let _ = db.with_conn(|conn| GitHubAccountDao::touch_last_used(conn, account_id));
 
+        // Çoklu SSH hesabı: hesap login'i için bir host alias tanımlıysa
+        // origin SSH adresi alias'lı kurulumla eşleşir (~/.ssh/config).
+        let ssh_remote = ssh_host_alias(&account.login)
+            .and_then(|alias| ssh_url_with_alias(&created.ssh_url, &alias));
+
         Ok(GitHubCreatedRepo {
             full_name: created.full_name,
             html_url: created.html_url,
             clone_url: created.clone_url,
             private: created.private,
+            ssh_remote,
         })
     }
 
@@ -722,5 +731,106 @@ impl GitHubService {
             following: user.following.unwrap_or(0),
             created_at: user.created_at,
         })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Çoklu SSH hesabı — host alias eşlemesi
+// ---------------------------------------------------------------------------
+
+/// Optional user mapping: GitHub login -> SSH host alias defined in
+/// `~/.ssh/config`. Read from `~/.config/gitorbit/ssh_hosts.toml` with one
+/// `login = "alias"` pair per line (`#` starts a comment). Missing file or
+/// missing entry simply means "no SSH preference for this account".
+pub fn ssh_host_alias(login: &str) -> Option<String> {
+    let config_dir = match std::env::var("XDG_CONFIG_HOME") {
+        Ok(v) if !v.is_empty() => Some(PathBuf::from(v)),
+        _ => std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .ok()
+            .map(|home| {
+                #[cfg(windows)]
+                {
+                    if let Ok(appdata) = std::env::var("APPDATA") {
+                        return PathBuf::from(appdata);
+                    }
+                }
+                PathBuf::from(home).join(".config")
+            }),
+    }?;
+    let path = config_dir.join("gitorbit").join("ssh_hosts.toml");
+    let content = std::fs::read_to_string(path).ok()?;
+    parse_ssh_hosts(&content, login)
+}
+
+/// Pure parser for the `ssh_hosts.toml` mapping (unit-testable).
+fn parse_ssh_hosts(content: &str, login: &str) -> Option<String> {
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim().trim_matches('"').trim_matches('\'');
+        let value = value
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .trim_end_matches(',');
+        if key.eq_ignore_ascii_case(login) && !value.is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+/// Rewrites a standard GitHub SSH clone URL (`git@github.com:owner/repo.git`)
+/// to use the user's host alias (`git@github-alt:owner/repo.git`).
+/// Returns `None` for empty or non-github.com URLs.
+fn ssh_url_with_alias(ssh_url: &str, alias: &str) -> Option<String> {
+    let rest = ssh_url.strip_prefix("git@github.com:")?;
+    if rest.is_empty() || alias.is_empty() {
+        return None;
+    }
+    Some(format!("git@{}:{}", alias, rest))
+}
+
+#[cfg(test)]
+mod ssh_alias_tests {
+    use super::{parse_ssh_hosts, ssh_url_with_alias};
+
+    const SAMPLE: &str = r#"
+# GitHub login -> ~/.ssh/config Host alias
+burakcnaksy0 = "github.com"
+diger-hesap  = 'github-alt'
+"#;
+
+    #[test]
+    fn parses_quoted_pairs_and_skips_comments() {
+        assert_eq!(
+            parse_ssh_hosts(SAMPLE, "diger-hesap").as_deref(),
+            Some("github-alt")
+        );
+        assert_eq!(
+            parse_ssh_hosts(SAMPLE, "BURAKCNAKSY0").as_deref(),
+            Some("github.com")
+        );
+        assert_eq!(parse_ssh_hosts(SAMPLE, "olmayan-hesap"), None);
+    }
+
+    #[test]
+    fn rewrites_github_host_to_alias() {
+        assert_eq!(
+            ssh_url_with_alias("git@github.com:acme/repo.git", "github-alt").as_deref(),
+            Some("git@github-alt:acme/repo.git")
+        );
+        assert_eq!(ssh_url_with_alias("", "github-alt"), None);
+        assert_eq!(
+            ssh_url_with_alias("git@gitlab.com:acme/repo.git", "github-alt"),
+            None
+        );
+        assert_eq!(ssh_url_with_alias("git@github.com:", "github-alt"), None);
     }
 }

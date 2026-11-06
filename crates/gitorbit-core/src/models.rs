@@ -222,6 +222,9 @@ pub struct GitHubCreatedRepo {
     pub html_url: String,
     pub clone_url: String,
     pub private: bool,
+    /// Hesap için `ssh_hosts.toml` eşlemesi varsa tercih edilecek SSH remote
+    /// adresi (host alias'lı, örn. `git@github-alt:owner/repo.git`).
+    pub ssh_remote: Option<String>,
 }
 
 /// Outcome of the "publish local repository to GitHub" flow:
