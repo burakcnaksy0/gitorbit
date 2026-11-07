@@ -21,6 +21,7 @@ const mockHistory: HistoryOutput = {
       author_email: "dev@gitorbit.dev",
       authored_at: "2026-10-29T10:00:00Z",
       parents: ["b0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9"],
+    refs: [],
     },
     {
       sha: "b0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9",
@@ -30,8 +31,10 @@ const mockHistory: HistoryOutput = {
       author_email: "admin@gitorbit.dev",
       authored_at: "2026-10-28T09:00:00Z",
       parents: [],
+    refs: [],
     },
   ],
+  graph: [],
   has_more: true,
   next_offset: 2,
 };
@@ -81,6 +84,7 @@ describe("HistoryView (Faz 4)", () => {
   it("handles empty repository gracefully without crashing (AC-9)", async () => {
     vi.mocked(tauriCommands.repositoryGetHistory).mockResolvedValue({
       commits: [],
+      graph: [],
       has_more: false,
       next_offset: 0,
     });
@@ -109,8 +113,10 @@ describe("HistoryView (Faz 4)", () => {
           author_email: "writer@gitorbit.dev",
           authored_at: "2026-10-27T08:00:00Z",
           parents: [],
+        refs: [],
         },
       ],
+      graph: [],
       has_more: false,
       next_offset: 3,
     };

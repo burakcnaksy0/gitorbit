@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Calendar,
@@ -22,6 +22,7 @@ import type {
   CommitDetails as CommitDetailsModel,
   CommitInfo,
   DiffOutput,
+  GraphRow,
 } from "../../types/ipc";
 import type { RepositorySummary } from "../../types/navigation";
 import {
@@ -38,6 +39,133 @@ interface HistoryViewProps {
 }
 
 const PAGE_SIZE = 30;
+
+// ---------------------------------------------------------------------------
+// v0.2 madde 6 — grafik çizim yardımcıları
+// ---------------------------------------------------------------------------
+
+/** Çekirdekteki color_index_for ile birebir aynı kararlı renk seçimi. */
+const LANE_COLORS = ["#38bdf8", "#fbbf24", "#34d399", "#f472b6", "#a78bfa", "#fb923c"];
+
+function colorFor(sha: string): string {
+  let acc = 0;
+  for (let i = 0; i < Math.min(sha.length, 8); i++) {
+    acc = (acc * 31 + sha.charCodeAt(i)) >>> 0;
+  }
+  return LANE_COLORS[acc % LANE_COLORS.length];
+}
+
+function refChipClass(ref: string): string {
+  if (ref.startsWith("tag:")) return "bg-amber-950/70 text-amber-300 border-amber-800/60";
+  if (ref === "HEAD") return "bg-slate-800 text-slate-300 border-slate-700";
+  if (ref.includes("/")) return "bg-sky-950/70 text-sky-300 border-sky-800/60";
+  return "bg-emerald-950/70 text-emerald-300 border-emerald-800/60";
+}
+
+const GRAPH_COL_WIDTH = 14;
+const GRAPH_PAD = 5;
+
+/**
+ * Tek satırlık grafik şeridi. SVG çizgileri `non-scaling-stroke` ile her satır
+ * yüksekliğinde sabit kalır; commit noktası HTML div'dir (daire bozulmaz).
+ * Erişilebilirlik: çizim aria-hidden, satırın kendisi zaten erişilebilir.
+ */
+const GraphStrip: React.FC<{ row: GraphRow; color: string; laneCount: number }> = ({
+  row,
+  color,
+  laneCount,
+}) => {
+  const width = laneCount * GRAPH_COL_WIDTH + GRAPH_PAD * 2;
+  const cx = (lane: number) => GRAPH_PAD + lane * GRAPH_COL_WIDTH + GRAPH_COL_WIDTH / 2;
+  return (
+    <div
+      className="relative shrink-0 self-stretch"
+      style={{ width }}
+      aria-hidden="true"
+    >
+      <svg
+        className="absolute inset-0 h-full w-full"
+        viewBox={`0 0 ${width} 100`}
+        preserveAspectRatio="none"
+      >
+        {/* Dikey geçen çizgiler */}
+        {row.active_lanes
+          .filter((l) => l !== row.lane)
+          .map((l) => (
+            <line
+              key={`v-${l}`}
+              x1={cx(l)}
+              y1={0}
+              x2={cx(l)}
+              y2={100}
+              stroke={color}
+              strokeOpacity={0.45}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+        {/* Üstten commit noktasına kavusan ebeveyn çizgileri */}
+        {row.edges
+          .filter((e) => e.kind === "merge_in")
+          .map((e, i) => (
+            <path
+              key={`m-${i}`}
+              d={`M ${cx(e.from_lane)} 0 C ${cx(e.from_lane)} 30, ${cx(e.to_lane)} 30, ${cx(e.to_lane)} 50`}
+              fill="none"
+              stroke={color}
+              strokeOpacity={0.7}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+        {/* Commit'ten aşağı inen ebeveyn çizgileri */}
+        {row.edges
+          .filter((e) => e.kind === "branch_out")
+          .map((e, i) =>
+            e.from_lane === e.to_lane ? (
+              <line
+                key={`b-${i}`}
+                x1={cx(e.to_lane)}
+                y1={50}
+                x2={cx(e.to_lane)}
+                y2={100}
+                stroke={color}
+                strokeOpacity={0.7}
+                vectorEffect="non-scaling-stroke"
+              />
+            ) : (
+              <path
+                key={`b-${i}`}
+                d={`M ${cx(e.from_lane)} 50 C ${cx(e.from_lane)} 75, ${cx(e.to_lane)} 75, ${cx(e.to_lane)} 100`}
+                fill="none"
+                stroke={color}
+                strokeOpacity={0.7}
+                vectorEffect="non-scaling-stroke"
+              />
+            )
+          )}
+        {/* Commit'ten yukarı (kendi seridinin üst kısmı) */}
+        <line
+          x1={cx(row.lane)}
+          y1={0}
+          x2={cx(row.lane)}
+          y2={50}
+          stroke={color}
+          strokeOpacity={0.7}
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <span
+        className="absolute h-2.5 w-2.5 rounded-full border-2"
+        style={{
+          left: cx(row.lane) - 5,
+          top: "50%",
+          transform: "translateY(-50%)",
+          borderColor: color,
+          backgroundColor: "transparent",
+        }}
+      />
+    </div>
+  );
+};
 
 function formatDate(value: string): string {
   const parsed = new Date(value);
@@ -66,6 +194,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
   const activeRepoId = repoId ?? currentRepo?.id ?? null;
 
   const [commits, setCommits] = useState<CommitInfo[]>([]);
+  const [graph, setGraph] = useState<GraphRow[]>([]);
   const [selectedCommit, setSelectedCommit] = useState<CommitInfo | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [nextOffset, setNextOffset] = useState(0);
@@ -93,6 +222,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
     async (reset = true) => {
       if (!activeRepoId) {
         setCommits([]);
+        setGraph([]);
         setSelectedCommit(null);
         setHasMore(false);
         setNextOffset(0);
@@ -113,9 +243,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
         );
         if (reset) {
           setCommits(historyRes.commits);
+          setGraph(historyRes.graph ?? []);
           setSelectedCommit(historyRes.commits[0] ?? null);
         } else {
           setCommits((prev) => [...prev, ...historyRes.commits]);
+          // Sayfa sınırı: yeni sayfanın grafiği kendi lane'inden başlar
+          // (bilincli sınır — tam depo grafiği kapsam dışı).
+          setGraph((prev) => [...prev, ...(historyRes.graph ?? [])]);
         }
         setHasMore(historyRes.has_more);
         setNextOffset(historyRes.next_offset);
@@ -188,6 +322,26 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
     setTimeout(() => setCopiedHash(null), 2000);
   };
 
+  // Detayda gezinme: ebeveyn SHA'sına atla (sayfada yoksa detaydan çekilir).
+  const selectCommitBySha = useCallback(
+    async (sha: string) => {
+      const found = commits.find((c) => c.sha === sha);
+      if (found) {
+        setSelectedCommit(found);
+        return;
+      }
+      if (!activeRepoId) return;
+      try {
+        const d = await repositoryGetCommitDetails(activeRepoId, sha);
+        setSelectedCommit(d.commit);
+      } catch (err) {
+        const e = err as AppError;
+        setDetailsError(e.message ?? "Ebeveyn commit yüklenemedi.");
+      }
+    },
+    [activeRepoId, commits]
+  );
+
   const filteredCommits = commits.filter(
     (c) =>
       c.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -202,6 +356,20 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
 
   const aheadCount =
     currentRepo && "ahead" in currentRepo ? (currentRepo.ahead ?? 0) : 0;
+
+  // sha → grafik satırı eşlemesi (arama filtresi indexleri kaydırır).
+  const graphBySha = useMemo(
+    () => new Map(commits.map((c, i) => [c.sha, graph[i]] as const)),
+    [commits, graph]
+  );
+  const laneCount = useMemo(() => {
+    let max = 1;
+    for (const row of graph) {
+      for (const l of row.active_lanes) max = Math.max(max, l + 1);
+      max = Math.max(max, row.lane + 1);
+    }
+    return max;
+  }, [graph]);
   const isSelectedHead =
     commits.length > 0 && selectedCommit?.sha === commits[0]?.sha;
   const canAmendLast = aheadCount > 0 && isSelectedHead;
@@ -299,31 +467,53 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
           ) : (
             filteredCommits.map((commit) => {
               const isSelected = selectedCommit?.sha === commit.sha;
+              const graphRow = graphBySha.get(commit.sha);
               return (
                 <button
                   key={commit.sha}
                   type="button"
                   onClick={() => setSelectedCommit(commit)}
-                  className={`w-full text-left p-3 rounded-lg transition-colors cursor-pointer border ${
+                  className={`w-full text-left p-3 rounded-lg transition-colors cursor-pointer border flex items-stretch gap-2 ${
                     isSelected
                       ? "bg-sky-600/20 border-sky-500/40 text-slate-100"
                       : "bg-slate-900/30 hover:bg-slate-800/60 border-slate-800/60 text-slate-300"
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="font-mono text-[10px] text-cyan-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
-                      {commit.short_sha}
-                    </span>
-                    <span className="text-[10px] text-slate-500 truncate max-w-[120px]">
-                      {formatDate(commit.authored_at)}
-                    </span>
-                  </div>
-                  <div className="text-xs font-medium truncate mb-1">
-                    {commit.message.split("\n")[0]}
-                  </div>
-                  <div className="text-[11px] text-slate-400 truncate flex items-center gap-1">
-                    <User className="w-3 h-3 text-slate-500 shrink-0" />
-                    <span className="truncate">{commit.author_name}</span>
+                  {graphRow && (
+                    <GraphStrip
+                      row={graphRow}
+                      color={colorFor(commit.sha)}
+                      laneCount={laneCount}
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="font-mono text-[10px] text-cyan-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
+                        {commit.short_sha}
+                      </span>
+                      <span className="text-[10px] text-slate-500 truncate max-w-[120px]">
+                        {formatDate(commit.authored_at)}
+                      </span>
+                    </div>
+                    <div className="text-xs font-medium truncate mb-1">
+                      {commit.message.split("\n")[0]}
+                    </div>
+                    {commit.refs && commit.refs.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        {commit.refs.map((ref) => (
+                          <span
+                            key={ref}
+                            className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${refChipClass(ref)}`}
+                          >
+                            {ref.startsWith("tag:") ? ref.slice(4) : ref}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="text-[11px] text-slate-400 truncate flex items-center gap-1">
+                      <User className="w-3 h-3 text-slate-500 shrink-0" />
+                      <span className="truncate">{commit.author_name}</span>
+                    </div>
                   </div>
                 </button>
               );
@@ -438,11 +628,28 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
                   <GitCommit className="w-3.5 h-3.5 text-slate-500" />
                   <span>Ebeveyn (Parent):</span>
                   {selectedCommit.parents.map((p) => (
-                    <span
+                    <button
                       key={p}
-                      className="font-mono text-[10px] text-slate-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800"
+                      type="button"
+                      onClick={() => void selectCommitBySha(p)}
+                      className="font-mono text-[10px] text-slate-400 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800 hover:text-sky-300 hover:border-sky-700 transition-colors cursor-pointer"
+                      title="Bu commite git"
                     >
                       {p.slice(0, 7)}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Refs (v0.2 grafik) */}
+              {selectedCommit.refs && selectedCommit.refs.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {selectedCommit.refs.map((ref) => (
+                    <span
+                      key={ref}
+                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${refChipClass(ref)}`}
+                    >
+                      {ref.startsWith("tag:") ? `🏷 ${ref.slice(4)}` : ref}
                     </span>
                   ))}
                 </div>

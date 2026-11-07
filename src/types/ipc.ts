@@ -222,10 +222,28 @@ export interface CommitInfo {
   author_email: string;
   authored_at: string;
   parents: string[];
+  /** Dal/tag dekorasyonları: "main", "origin/main", "tag:v1.0", "HEAD". */
+  refs: string[];
+}
+
+export type GraphEdgeKind = "merge_in" | "branch_out";
+
+export interface GraphEdge {
+  from_lane: number;
+  to_lane: number;
+  kind: GraphEdgeKind;
+}
+
+/** Bir commit satırının grafik planı (compute_lanes çıktısı). */
+export interface GraphRow {
+  lane: number;
+  active_lanes: number[];
+  edges: GraphEdge[];
 }
 
 export interface HistoryOutput {
   commits: CommitInfo[];
+  graph: GraphRow[];
   has_more: boolean;
   next_offset: number;
 }

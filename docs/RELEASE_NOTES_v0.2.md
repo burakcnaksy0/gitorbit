@@ -96,5 +96,29 @@ her batch'in kullanıcıya dönük notlarını tutar.
 
 ---
 
-*Sıradaki batch'ler: geçmiş grafiği (Batch 4), çakışma paneli + tümünü
-senkronize (Batch 5), sabitleme + ilk çalışma (Batch 6).*
+## Batch 4 — Görselleştirme ✅
+
+### Geçmiş grafiği (commit ağacı)
+- Commit listesi artık düz liste değil: her satırın solunda **dal/birleşme
+  şeridi** — lane hesabı çekirdekte saf fonksiyon (`compute_lanes`), çizim
+  satır başına SVG. Renkler SHA'dan türeyen 6 renkli paletten kararlı.
+- Merge commit'lerde ikinci şerit açılır, birleşme noktasında çizgiler
+  kavuşur; octopus merge çok şeritli çizilir.
+- Commit satırlarında ve detayında **dal/tag rozetleri**: yeşil = yerel dal,
+  mavi = uzak dal (origin/…), amber = etiket.
+- Detay panelinde **ebeveyn SHA'ları tıklanabilir** — sayfada değilse detaydan
+  çekilerek gezinme sağlanır.
+- Bilinçli sınır: grafik yalnızca yüklenen sayfayı çizer (sayfa sınırında
+  çizgiler kesilir); tam depo grafiği kapsam dışı.
+
+### Testler
+- Core: lane hesabı birim testleri (lineer / merge / octopus / iç içe /
+  sayfa sınırı + renk kararlılığı) + gerçek merge üreten repoyla entegrasyon
+  testi (graph + refs).
+- Frontend: grafik render'ı, rozetler, tıklanabilir ebeveynler (3 test).
+  Toplam suite 93 yeşil.
+
+---
+
+*Sıradaki batch'ler: çakışma paneli + tümünü senkronize (Batch 5), sabitleme
++ ilk çalışma (Batch 6).*

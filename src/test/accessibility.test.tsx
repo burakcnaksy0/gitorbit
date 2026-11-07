@@ -22,6 +22,7 @@ describe("GitOrbit — Accessibility & Keyboard Navigation (a11y)", () => {
     vi.mocked(tauriCommands.repositoryGetStatus).mockResolvedValue(mockStatus);
     vi.mocked(tauriCommands.repositoryGetHistory).mockResolvedValue({
       commits: [],
+      graph: [],
       has_more: false,
       next_offset: 0,
     });

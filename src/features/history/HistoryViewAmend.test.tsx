@@ -23,6 +23,7 @@ const headCommit: CommitInfo = {
   author_email: "b@example.com",
   authored_at: "2026-11-07T10:00:00Z",
   parents: ["b".repeat(40)],
+  refs: [],
 };
 
 const olderCommit: CommitInfo = {
@@ -31,6 +32,7 @@ const olderCommit: CommitInfo = {
   short_sha: "bbbbbbb",
   message: "init",
   parents: [],
+  refs: [],
 };
 
 function repoSummary(overrides: Partial<RepositorySummary> = {}): RepositorySummary {
@@ -57,6 +59,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   const history: HistoryOutput = {
     commits: [headCommit, olderCommit],
+    graph: [],
     has_more: false,
     next_offset: 2,
   };

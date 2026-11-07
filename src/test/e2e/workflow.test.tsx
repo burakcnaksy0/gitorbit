@@ -53,8 +53,10 @@ const mockHistory = {
       author_email: "dev@gitorbit.dev",
       authored_at: "2026-11-01T12:00:00Z",
       parents: [],
+      refs: [],
     },
   ],
+  graph: [],
   has_more: false,
   next_offset: 1,
 };
