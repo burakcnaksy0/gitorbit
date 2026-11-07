@@ -36,6 +36,7 @@ impl GitHistoryManager {
             // No commits yet on this reference
             return Ok(HistoryOutput {
                 commits: Vec::new(),
+                graph: Vec::new(),
                 has_more: false,
                 next_offset: 0,
             });
@@ -53,7 +54,7 @@ impl GitHistoryManager {
                 target_ref,
                 &skip_arg,
                 &n_arg,
-                "--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%P%x00%B%x1e",
+                "--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%P%x00%D%x00%B%x1e",
             ],
         )?;
 
@@ -77,7 +78,7 @@ impl GitHistoryManager {
             }
 
             let parts: Vec<&str> = trimmed.split('\0').collect();
-            if parts.len() < 7 {
+            if parts.len() < 8 {
                 continue;
             }
 
@@ -87,7 +88,8 @@ impl GitHistoryManager {
             let author_email = parts[3].trim().to_string();
             let authored_at = parts[4].trim().to_string();
             let parents_str = parts[5].trim();
-            let message = parts[6].trim().to_string();
+            let refs = Self::parse_ref_decorations(parts[6]);
+            let message = parts[7].trim().to_string();
 
             let parents = if parents_str.is_empty() {
                 Vec::new()
@@ -106,6 +108,7 @@ impl GitHistoryManager {
                 author_email,
                 authored_at,
                 parents,
+                refs,
             });
         }
 
@@ -114,13 +117,48 @@ impl GitHistoryManager {
             commits.truncate(page_limit);
         }
 
+        // Grafik yalnizca yuklenen sayfa icin cizilir (bilincli sinir).
+        let graph = crate::git::graph::compute_lanes(
+            &commits
+                .iter()
+                .map(|c| (c.sha.clone(), c.parents.clone()))
+                .collect::<Vec<_>>(),
+        );
+
         let next_offset = offset + commits.len();
 
         Ok(HistoryOutput {
             commits,
+            graph,
             has_more,
             next_offset,
         })
+    }
+
+    /// `%D` dekorasyonlarini temizler: "HEAD -> main, origin/main, tag: v1" →
+    /// ["main", "origin/main", "tag:v1"]. (HEAD -> hedef dal adini birakir.)
+    fn parse_ref_decorations(raw: &str) -> Vec<String> {
+        let raw = raw.trim();
+        let raw = raw.strip_prefix('(').unwrap_or(raw);
+        let raw = raw.strip_suffix(')').unwrap_or(raw);
+        if raw.is_empty() {
+            return Vec::new();
+        }
+        raw.split(", ")
+            .map(|entry| {
+                let entry = entry.trim();
+                if let Some(rest) = entry.strip_prefix("HEAD -> ") {
+                    rest.to_string()
+                } else if entry == "HEAD" {
+                    "HEAD".to_string()
+                } else if let Some(tag) = entry.strip_prefix("tag: ") {
+                    format!("tag:{}", tag)
+                } else {
+                    entry.to_string()
+                }
+            })
+            .filter(|s| !s.is_empty() && s != "grafted" && s != "tag")
+            .collect()
     }
 
     /// Reads full details for a single commit (metadata + changed files + stats).
@@ -177,6 +215,7 @@ impl GitHistoryManager {
             authored_at: parts[4].trim().to_string(),
             parents,
             message: parts[6].trim().to_string(),
+            refs: Vec::new(),
         };
 
         let files = Self::commit_changed_files(&canonical_repo, sha)?;
@@ -318,6 +357,7 @@ impl GitHistoryManager {
                         parts[5].split_whitespace().map(|s| s.to_string()).collect()
                     },
                     message: parts[6].trim().to_string(),
+                    refs: Vec::new(),
                 });
             }
         }

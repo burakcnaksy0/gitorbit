@@ -18,6 +18,7 @@ pub use git::{
     GitHistoryManager, GitIgnoreManager, GitMergeManager, GitOperationStateManager,
     GitRemoteManager, GitStashManager, GitStatusParser,
 };
+pub use git::graph::{compute_lanes, color_index_for, GraphEdge, GraphEdgeKind, GraphRow};
 pub use models::*;
 pub use services::github_service::PendingDeviceFlow;
 pub use services::{

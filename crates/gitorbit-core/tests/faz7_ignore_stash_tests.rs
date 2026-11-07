@@ -304,3 +304,60 @@ fn amend_message_never_includes_staged_content() {
     // head_on_remote kontrolune duser).
     assert_eq!(status.upstream, None);
 }
+
+// ---------------------------------------------------------------------------
+// Geçmiş grafiği + refs (v0.2 madde 6)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn history_returns_graph_rows_and_ref_decorations() {
+    let temp = tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    init_repo(&repo);
+
+    // feature dali + merge — gerçek bir kavusma grafigi.
+    run_cmd(&repo, &["checkout", "-b", "feature"]);
+    fs::write(repo.join("f.txt"), "f\n").unwrap();
+    run_cmd(&repo, &["add", "f.txt"]);
+    run_cmd(&repo, &["commit", "-m", "feature isi"]);
+    run_cmd(&repo, &["checkout", "main"]);
+    fs::write(repo.join("m.txt"), "m\n").unwrap();
+    run_cmd(&repo, &["add", "m.txt"]);
+    run_cmd(&repo, &["commit", "-m", "main isi"]);
+    run_cmd(&repo, &["merge", "--no-ff", "feature", "-m", "merge feature"]);
+    run_cmd(&repo, &["tag", "v1.0"]);
+
+    let db = Database::in_memory().unwrap();
+    let id = register(&db, &repo);
+
+    let history =
+        gitorbit_core::services::RepositoryService::get_history(&db, &id, None, 50, 0).unwrap();
+
+    // En yeni commit merge commit: 2 ebeveyn → grafikte ikinci serit acilmali.
+    assert!(history.commits.len() >= 4);
+    let merge_row_index = history
+        .commits
+        .iter()
+        .position(|c| c.parents.len() == 2)
+        .expect("merge commit bulunamadi");
+    assert_eq!(merge_row_index, 0, "merge commit en yeni olmali");
+    assert_eq!(history.graph.len(), history.commits.len());
+    assert!(
+        history.graph[0].active_lanes.len() >= 2,
+        "merge satirinda ikinci serit bekleniyordu: {:?}",
+        history.graph
+    );
+
+    // refs: main (HEAD -> main dalinda degiliz — feature'de degiliz; HEAD merge sonrasi main)
+    // ve tag v1.0 gorunmeli.
+    let head_refs = &history.commits[0].refs;
+    assert!(
+        head_refs.iter().any(|r| r == "main" || r == "HEAD"),
+        "HEAD dekorasyonu yok: {head_refs:?}"
+    );
+    assert!(
+        head_refs.iter().any(|r| r == "tag:v1.0"),
+        "tag dekorasyonu yok: {head_refs:?}"
+    );
+}

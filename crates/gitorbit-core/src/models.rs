@@ -141,11 +141,18 @@ pub struct CommitInfo {
     pub author_email: String,
     pub authored_at: String,
     pub parents: Vec<String>,
+    /// Dekorasyonlar (dal/tag/HEAD) — `%D` çıktısından temizlenmiş adlar.
+    #[serde(default)]
+    pub refs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HistoryOutput {
     pub commits: Vec<CommitInfo>,
+    /// Yalnızca yüklenen sayfa için hesaplanmış grafik satırları
+    /// (`commits` ile birebir sıralı).
+    #[serde(default)]
+    pub graph: Vec<crate::git::graph::GraphRow>,
     pub has_more: bool,
     pub next_offset: usize,
 }
