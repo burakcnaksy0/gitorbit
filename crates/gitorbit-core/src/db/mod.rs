@@ -30,6 +30,10 @@ impl Database {
 
         MigrationManager::apply_migrations(&mut conn)?;
 
+        // WAL dosyasının sınırsız büyümesini sınırla (checkpoint sonrası 4 MB
+        // üstü kırpılır). Best-effort: başarısızlık açmayı engellemez.
+        let _ = conn.pragma_update(None, "journal_size_limit", 4 * 1024 * 1024);
+
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             db_path: Some(path.to_path_buf()),
@@ -102,5 +106,16 @@ impl Database {
 
     pub fn path(&self) -> Option<&PathBuf> {
         self.db_path.as_ref()
+    }
+
+    /// Uygulama kapanırken WAL dosyasını ana veritabanına eritir
+    /// (TRUNCATE). Uzun süre çalışan oturumlarda -wal dosyasının yüzlerce MB
+    /// olmasını ve anormal kapanışta veri kaybı yüzeyini azaltır.
+    /// Best-effort: hata durumunda Err döner ama çağıran görmezden gelebilir.
+    pub fn checkpoint_wal(&self) -> Result<(), CommandError> {
+        self.with_conn(|conn| {
+            conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+                .map_err(|e| CommandError::database_error(format!("WAL checkpoint: {}", e)))
+        })
     }
 }

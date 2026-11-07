@@ -456,8 +456,10 @@ fn repository_push(
         // depo yerel commit kimliği hesaba göre kendiliğinden düzelir.
         let owner_identity = origin_owner_identity(&state, db, &repo_id);
         let token = match &owner_identity {
+            // HTTPS: token alınamazsa (AUTH_EXPIRED dahil) hata iletilir —
+            // kimliksiz deneme yanıltıcı "Invalid username or token" verirdi.
+            Some((account, true)) => Some(state.github.access_token(db, &account.id)?),
             // SSH remote: ~/.ssh/config kimliği zaten doğru hesabı seçer.
-            Some((account, true)) => state.github.access_token(db, &account.id).ok(),
             _ => None,
         };
         if let Some((account, _)) = &owner_identity {
@@ -1089,9 +1091,11 @@ fn run_sync_round(state: &State<AppState>, kind: SyncKind) -> Vec<RepoSyncOutcom
             }),
             SyncKind::Push => with_db(state, |db| {
                 // repository_push ile aynı hesap-duyarlı kimlik/token mantığı.
+                // Token alınamazsa hata depo sonucuna yazılır (yetim kimliksiz
+                // push yerine gerçek neden: AUTH_EXPIRED vb.).
                 let owner_identity = origin_owner_identity(state, db, &repo_id);
                 let token = match &owner_identity {
-                    Some((account, true)) => state.github.access_token(db, &account.id).ok(),
+                    Some((account, true)) => Some(state.github.access_token(db, &account.id)?),
                     _ => None,
                 };
                 if let Some((account, _)) = &owner_identity {
@@ -1286,8 +1290,19 @@ pub fn run() {
             github_get_account_profile,
             github_publish_repository,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // Temiz kapanış: WAL'ı ana DB'ye erit (-wal dosyasının sınırsız
+            // büyümesi ve ani kapatmada kurtarma yüzeyi azalır).
+            if let tauri::RunEvent::Exit { .. } = event {
+                if let Some(state) = app.try_state::<AppState>()
+                    && let Ok(db) = state.db.lock()
+                {
+                    let _ = db.checkpoint_wal();
+                }
+            }
+        });
 }
 
 // ---------------------------------------------------------------------------

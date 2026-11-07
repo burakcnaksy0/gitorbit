@@ -34,6 +34,10 @@ struct MockGitHubHttpClient {
     poll_responses: Mutex<Vec<RawPollResponse>>,
     user_resp: RawUserResponse,
     repos_resp: Vec<RawRepoResponse>,
+    /// v0.2.1: kaç refresh isteği atıldığını testin dışarıdan okuyabilmesi için.
+    refresh_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    /// Eşzamanlılık testlerinde sahte ağ gecikmesi (ms).
+    refresh_delay_ms: u64,
 }
 
 impl MockGitHubHttpClient {
@@ -78,6 +82,8 @@ impl MockGitHubHttpClient {
                     login: "testuser".to_string(),
                 },
             }],
+            refresh_calls: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            refresh_delay_ms: 0,
         }
     }
 
@@ -111,6 +117,8 @@ impl MockGitHubHttpClient {
                 ..Default::default()
             },
             repos_resp: vec![],
+            refresh_calls: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            refresh_delay_ms: 0,
         }
     }
 
@@ -135,6 +143,8 @@ impl MockGitHubHttpClient {
                 ..Default::default()
             },
             repos_resp: vec![],
+            refresh_calls: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            refresh_delay_ms: 0,
         }
     }
 }
@@ -225,6 +235,11 @@ impl GitHubHttpClient for MockGitHubHttpClient {
         _client_id: &str,
         refresh_token: &str,
     ) -> Result<RawRefreshResponse, CommandError> {
+        self.refresh_calls
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if self.refresh_delay_ms > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(self.refresh_delay_ms));
+        }
         // Test convention: "BAD_REFRESH" simulates a rejected grant, anything
         // else returns a rotated token pair.
         if refresh_token == "BAD_REFRESH" {
@@ -864,4 +879,50 @@ fn test_refresh_flow_no_refresh_key_returns_old_token() {
         .access_token(&db, "acct-legacy")
         .expect("eski token dönmeli");
     assert_eq!(token, "legacy_token");
+}
+
+#[test]
+fn test_refresh_flow_concurrent_calls_trigger_single_refresh() {
+    // Otomatik-fetch turu + kullanıcı push'u aynı anda süresi dolmuş token'a
+    // bakarsa TAM BİR refresh isteği atılmalı; ikincisi taze token'ı okumalı.
+    let db = make_db();
+    let mut client = client_with_refresh_on_poll();
+    client.refresh_delay_ms = 120; // gerçek ağ gecikmesini taklit et
+    let refresh_calls = std::sync::Arc::clone(&client.refresh_calls);
+    let svc = std::sync::Arc::new(make_service(client));
+
+    let (_session, pending) = svc.begin_device_flow().expect("begin");
+    let account = login(&svc, &db, &pending);
+
+    db.with_conn(|conn| {
+        gitorbit_core::db::github_accounts::GitHubAccountDao::set_token_expires_at(
+            conn,
+            &account.id,
+            Some("2020-01-01T00:00:00+00:00"),
+        )
+    })
+    .expect("force expiry");
+
+    let handles: Vec<_> = (0..2)
+        .map(|_| {
+            let svc = std::sync::Arc::clone(&svc);
+            let db = db.clone();
+            let id = account.id.clone();
+            std::thread::spawn(move || svc.access_token(&db, &id))
+        })
+        .collect();
+
+    let tokens: Vec<String> = handles
+        .into_iter()
+        .map(|h| h.join().expect("thread").expect("access_token"))
+        .collect();
+
+    assert_eq!(
+        refresh_calls.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "eşzamanlı iki çağrı tek refresh isteği üretmeli"
+    );
+    for t in tokens {
+        assert_eq!(t, "refreshed_token_456");
+    }
 }

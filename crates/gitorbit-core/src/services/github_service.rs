@@ -455,11 +455,20 @@ impl PendingDeviceFlow {
 pub struct GitHubService {
     client: Box<dyn GitHubHttpClient>,
     store: Box<dyn CredentialStore>,
+    /// v0.2.1: eşzamanlı refresh denemelerini sıraya alır (otomatik-fetch turu
+    /// + kullanıcı push'u aynı anda token yenilemeye çalışırsa rotasyon
+    /// çakışması/çift istek oluşmasın). Kilit yalnızca kısa refresh bölümünü
+    /// kapsar; token değeri kilidi asla taşımaz.
+    refresh_lock: std::sync::Mutex<()>,
 }
 
 impl GitHubService {
     pub fn new(client: Box<dyn GitHubHttpClient>, store: Box<dyn CredentialStore>) -> Self {
-        Self { client, store }
+        Self {
+            client,
+            store,
+            refresh_lock: std::sync::Mutex::new(()),
+        }
     }
 
     /// Construct the production service using the real GitHub API and OS keyring.
@@ -679,17 +688,20 @@ impl GitHubService {
     }
 
     /// Push kimliği çözümü: remote URL'sinin owner'ı hangi bağlı hesabın
-    /// login'iyle eşleşiyorsa o hesabın token'ı döner. Eşleşme yoksa ya da
-    /// keyring okunamazsa `Ok(None)` — push sistem kimliğiyle denenir.
+    /// login'iyle eşleşiyorsa o hesabın token'ı döner. Eşleşme yoksa
+    /// `Ok(None)` — push sistem kimliğiyle denenir. Hesap eşleştiyse ama
+    /// token alınamazsa (AUTH_EXPIRED dahil) hata İLETİLİR: yanıltıcı
+    /// "AuthRequired" yerine gerçek neden kullanıcıya yansır.
     pub fn token_for_repo_owner(
         &self,
         db: &Database,
         owner: &str,
     ) -> Result<Option<String>, CommandError> {
-        let token_account = self.account_for_repo_owner(db, owner)?;
-        Ok(token_account
-            .and_then(|a| self.account_with_token(db, &a.id).ok())
-            .map(|(_, token)| token))
+        let Some(account) = self.account_for_repo_owner(db, owner)? else {
+            return Ok(None);
+        };
+        self.account_with_token(db, &account.id)
+            .map(|(_, token)| Some(token))
     }
 
     /// Bağlı hesaplardan GitHub login'i `owner` ile eşleşen hesap (yoksa None).
@@ -812,6 +824,20 @@ impl GitHubService {
         let Ok(refresh_token) = self.store.get_credential(&refresh_ref) else {
             return Ok(None);
         };
+
+        // Eşzamanlı yenileme koruması: kilidi aldıktan sonra bitiş zamanını
+        // yeniden oku — bizi bekleyen başka bir çağrı çoktan tazelemiş olabilir.
+        let _guard = self
+            .refresh_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(latest) = db.with_conn(|conn| GitHubAccountDao::get_by_id(conn, &account.id))?
+            && !Self::token_expiring_soon(latest.token_expires_at.as_deref())
+        {
+            // Başka bir iş yeniledi: anahtarlıktaki güncel erişim anahtarını
+            // döndür (ikinci bir refresh isteği ATILMAZ).
+            return Ok(self.store.get_credential(&account.credential_ref).ok());
+        }
 
         match self
             .client
