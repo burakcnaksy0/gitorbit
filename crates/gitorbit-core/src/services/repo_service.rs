@@ -67,6 +67,7 @@ impl RepositoryService {
             created_at: now.clone(),
             updated_at: now,
             missing: false,
+            pinned: false,
         };
 
         // 5. Save to database
@@ -143,6 +144,13 @@ impl RepositoryService {
     /// Removes repository registration from database without touching disk files.
     pub fn remove_repository(db: &Database, id: &str) -> Result<bool, CommandError> {
         db.with_conn(|conn| RepositoryDao::remove(conn, id))
+    }
+
+    /// v0.2 madde 10 — sabitleme bayrağını günceller ve güncel kaydı döner.
+    pub fn set_pinned(db: &Database, id: &str, pinned: bool) -> Result<RepositoryRecord, CommandError> {
+        let repo = Self::get_repository(db, id)?;
+        db.with_conn(|conn| RepositoryDao::set_pinned(conn, &repo.id, pinned))?;
+        Self::get_repository(db, id)
     }
 
     /// Reads real Git status using canonical path stored in the database.

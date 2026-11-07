@@ -67,6 +67,10 @@ impl SettingsService {
             settings.auto_fetch_minutes = minutes.clamp(1, 120);
         }
 
+        if let Some(done) = update.onboarding_completed {
+            settings.onboarding_completed = done;
+        }
+
         db.with_conn(|conn| SettingsDao::save(conn, &settings))?;
         Ok(settings)
     }

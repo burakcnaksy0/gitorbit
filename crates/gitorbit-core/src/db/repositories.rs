@@ -43,7 +43,7 @@ impl RepositoryDao {
             .prepare(
                 r#"
                 SELECT id, canonical_path, display_name, current_branch,
-                       last_opened_at, created_at, updated_at
+                       last_opened_at, created_at, updated_at, pinned
                 FROM repositories
                 ORDER BY COALESCE(last_opened_at, created_at) DESC
                 "#,
@@ -63,6 +63,7 @@ impl RepositoryDao {
                     created_at: row.get(5)?,
                     updated_at: row.get(6)?,
                     missing: false,
+                    pinned: row.get::<_, i64>(7)? != 0,
                 })
             })
             .map_err(|e| {
@@ -87,7 +88,7 @@ impl RepositoryDao {
             .prepare(
                 r#"
                 SELECT id, canonical_path, display_name, current_branch,
-                       last_opened_at, created_at, updated_at
+                       last_opened_at, created_at, updated_at, pinned
                 FROM repositories
                 WHERE id = ?1
                 "#,
@@ -104,6 +105,7 @@ impl RepositoryDao {
                 created_at: row.get(5)?,
                 updated_at: row.get(6)?,
                 missing: false,
+                pinned: row.get::<_, i64>(7)? != 0,
             })
         })
         .optional()
@@ -118,7 +120,7 @@ impl RepositoryDao {
             .prepare(
                 r#"
                 SELECT id, canonical_path, display_name, current_branch,
-                       last_opened_at, created_at, updated_at
+                       last_opened_at, created_at, updated_at, pinned
                 FROM repositories
                 WHERE canonical_path = ?1
                 "#,
@@ -135,6 +137,7 @@ impl RepositoryDao {
                 created_at: row.get(5)?,
                 updated_at: row.get(6)?,
                 missing: false,
+                pinned: row.get::<_, i64>(7)? != 0,
             })
         })
         .optional()
@@ -207,5 +210,89 @@ impl RepositoryDao {
         })?;
 
         Ok(())
+    }
+
+    /// v0.2 madde 10 — sabitleme bayrağını günceller.
+    pub fn set_pinned(conn: &Connection, id: &str, pinned: bool) -> Result<(), CommandError> {
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE repositories SET pinned = ?1, updated_at = ?2 WHERE id = ?3",
+            params![pinned as i64, now, id],
+        )
+        .map_err(|e| CommandError::database_error(format!("pinned güncellenemedi: {}", e)))?;
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+
+    fn record(id: &str, path: &str) -> RepositoryRecord {
+        RepositoryRecord {
+            id: id.to_string(),
+            canonical_path: path.to_string(),
+            display_name: path.to_string(),
+            current_branch: Some("main".to_string()),
+            last_opened_at: Some("2026-01-01T00:00:00Z".to_string()),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+            missing: false,
+            pinned: false,
+        }
+    }
+
+    #[test]
+    fn new_database_has_pinned_column_defaulting_to_false() {
+        let db = Database::in_memory().unwrap();
+        db.with_conn(|conn| RepositoryDao::insert(conn, &record("r1", "/x/repo1")))
+            .unwrap();
+        let list = db.with_conn(RepositoryDao::list).unwrap();
+        assert_eq!(list.len(), 1);
+        assert!(!list[0].pinned, "yeni kayit sabitsiz dogmali");
+    }
+
+    #[test]
+    fn set_pinned_roundtrips_through_list_and_get_by_id() {
+        let db = Database::in_memory().unwrap();
+        db.with_conn(|conn| RepositoryDao::insert(conn, &record("r1", "/x/repo1")))
+            .unwrap();
+        db.with_conn(|conn| RepositoryDao::insert(conn, &record("r2", "/x/repo2")))
+            .unwrap();
+
+        db.with_conn(|conn| RepositoryDao::set_pinned(conn, "r2", true))
+            .unwrap();
+
+        let list = db.with_conn(RepositoryDao::list).unwrap();
+        let pinned_ids: Vec<&str> = list.iter().filter(|r| r.pinned).map(|r| r.id.as_str()).collect();
+        assert_eq!(pinned_ids, vec!["r2"]);
+
+        let fetched = db
+            .with_conn(|conn| RepositoryDao::get_by_id(conn, "r2"))
+            .unwrap()
+            .unwrap();
+        assert!(fetched.pinned);
+
+        // toggle geri alinabilir
+        db.with_conn(|conn| RepositoryDao::set_pinned(conn, "r2", false))
+            .unwrap();
+        let fetched = db
+            .with_conn(|conn| RepositoryDao::get_by_id(conn, "r2"))
+            .unwrap()
+            .unwrap();
+        assert!(!fetched.pinned);
+    }
+
+    #[test]
+    fn migrations_are_idempotent_after_pinned_column() {
+        use crate::db::migrations::MigrationManager;
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        // ayni connection'a migration'i ikinci kez uygulamak patlamamali
+        MigrationManager::apply_migrations(&mut conn).unwrap();
+        MigrationManager::apply_migrations(&mut conn).unwrap();
+        let list = RepositoryDao::list(&conn).unwrap();
+        assert!(list.is_empty());
     }
 }

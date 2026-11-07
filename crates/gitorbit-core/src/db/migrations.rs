@@ -123,6 +123,36 @@ impl MigrationManager {
             })?;
         }
 
+        // Migration 3: v0.2 madde 10 — depolar için sabitleme bayrağı.
+        if current_version.unwrap_or(0) < 3 {
+            let tx = conn.transaction().map_err(|e| {
+                CommandError::database_error(format!("Transaction başlatılamadı: {}", e))
+            })?;
+
+            tx.execute_batch(
+                r#"
+                ALTER TABLE repositories
+                    ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+                "#,
+            )
+            .map_err(|e| {
+                CommandError::database_error(format!("Migration 3 tablosu güncellenemedi: {}", e))
+            })?;
+
+            let now_m3 = Utc::now().to_rfc3339();
+            tx.execute(
+                "INSERT INTO schema_migrations (version, applied_at) VALUES (3, ?1)",
+                [&now_m3],
+            )
+            .map_err(|e| {
+                CommandError::database_error(format!("Migration 3 kaydedilemedi: {}", e))
+            })?;
+
+            tx.commit().map_err(|e| {
+                CommandError::database_error(format!("Migration 3 commit edilemedi: {}", e))
+            })?;
+        }
+
         Ok(())
     }
 }

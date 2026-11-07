@@ -178,6 +178,17 @@ fn repository_remove(state: State<AppState>, repo_id: String) -> CmdResult<bool>
     })
 }
 
+/// v0.2 madde 10 — sabitleme bayrağını günceller (yalnızca DB; depo ağacına
+/// dokunmaz, bu yüzden kilit gerektirmez).
+#[tauri::command]
+fn repository_set_pinned(
+    state: State<AppState>,
+    repo_id: String,
+    pinned: bool,
+) -> CmdResult<RepositoryRecord> {
+    with_db(&state, |db| RepositoryService::set_pinned(db, &repo_id, pinned))
+}
+
 /// Returns the current Git status (branch, staged/unstaged/untracked files, etc.).
 #[tauri::command]
 fn repository_get_status(state: State<AppState>, repo_id: String) -> CmdResult<GitStatus> {
@@ -1219,6 +1230,7 @@ pub fn run() {
             repository_init,
             repository_list,
             repository_remove,
+            repository_set_pinned,
             repository_get_status,
             repository_get_details,
             repository_relink,

@@ -31,6 +31,9 @@ pub struct RepositoryRecord {
     /// True when the registered path no longer exists on disk.
     #[serde(default)]
     pub missing: bool,
+    /// v0.2 madde 10 — kullanıcı listesinde sabitlenmiş mi?
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -345,6 +348,9 @@ pub struct AppSettings {
     /// v0.2: arka plan fetch aralığı (dakika, min 1).
     #[serde(default = "default_fetch_minutes")]
     pub auto_fetch_minutes: u32,
+    /// v0.2 madde 12: ilk çalışma yönlendirmesi tamamlandı/atlandı mı?
+    #[serde(default)]
+    pub onboarding_completed: bool,
 }
 
 fn default_true() -> bool {
@@ -365,6 +371,7 @@ impl Default for AppSettings {
             active_github_account_id: None,
             auto_fetch: true,
             auto_fetch_minutes: 3,
+            onboarding_completed: false,
         }
     }
 }
@@ -382,6 +389,8 @@ pub struct AppSettingsUpdate {
     pub auto_fetch: Option<bool>,
     #[serde(default)]
     pub auto_fetch_minutes: Option<u32>,
+    #[serde(default)]
+    pub onboarding_completed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
