@@ -255,6 +255,21 @@ export interface GitIdentity {
   email: string | null;
 }
 
+/** Sonucu of "yoksay" akışının (repository_ignore_file). */
+export interface IgnoredFile {
+  path: string;
+  pattern: string;
+  scope: "repo" | "local";
+  already_present: boolean;
+}
+
+/** Tek bir stash girdisi. */
+export interface StashEntry {
+  index: string;
+  message: string;
+  date: string;
+}
+
 export interface CommitResult {
   commit_sha: string;
   status: GitStatus;

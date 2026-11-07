@@ -14,18 +14,28 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
+  Archive,
   CheckCircle,
+  EyeOff,
   FileDiff,
   FileMinus,
   FilePlus,
   FileText,
   HelpCircle,
   Loader2,
+  PackageOpen,
   RotateCcw,
+  Trash2,
   User,
   X,
 } from "lucide-react";
-import type { AppError, ChangedFile, DiffOutput, GitStatus } from "../../types/ipc";
+import type {
+  AppError,
+  ChangedFile,
+  DiffOutput,
+  GitStatus,
+  StashEntry,
+} from "../../types/ipc";
 import type { RepositorySummary } from "../../types/navigation";
 import {
   repositoryCommit,
@@ -34,7 +44,13 @@ import {
   repositoryGetIdentity,
   repositoryGetStatus,
   repositoryGetStatusHash,
+  repositoryIgnoreFile,
   repositorySetIdentity,
+  repositoryStashApply,
+  repositoryStashDrop,
+  repositoryStashList,
+  repositoryStashPop,
+  repositoryStashPush,
   repositoryStageFiles,
   repositoryUnstageFiles,
 } from "../../lib/tauriCommands";
@@ -305,6 +321,7 @@ interface FileRowProps {
   onSelect: () => void;
   onStageToggle: () => void;
   onDiscard: () => void;
+  onIgnore?: () => void;
   isStaged: boolean;
   isLoading: boolean;
 }
@@ -315,6 +332,7 @@ function FileRow({
   onSelect,
   onStageToggle,
   onDiscard,
+  onIgnore,
   isStaged,
   isLoading,
 }: FileRowProps) {
@@ -384,6 +402,23 @@ function FileRow({
             <RotateCcw className="w-3 h-3" />
           </button>
         )}
+
+        {onIgnore && !isStaged && (
+          <button
+            id={`file-ignore-${file.path.replace(/[^a-zA-Z0-9]/g, "-")}`}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onIgnore();
+            }}
+            disabled={isLoading}
+            title="Yoksay (.gitignore veya bu makine)"
+            className="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-amber-300 transition-colors"
+            aria-label={`${file.path} dosyasını yoksay`}
+          >
+            <EyeOff className="w-3 h-3" />
+          </button>
+        )}
       </div>
 
       <StatusBadge status={file.status} />
@@ -437,6 +472,18 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
   const [identityEmail, setIdentityEmail] = useState("");
   const [identityError, setIdentityError] = useState<string | null>(null);
   const [isSavingIdentity, setIsSavingIdentity] = useState(false);
+
+  // v0.2 — Ignore + Stash state
+  const [ignoreTarget, setIgnoreTarget] = useState<ChangedFile | null>(null);
+  const [isIgnoring, setIsIgnoring] = useState(false);
+  const [stashes, setStashes] = useState<StashEntry[]>([]);
+  const [stashPanelOpen, setStashPanelOpen] = useState(false);
+  const [stashModalOpen, setStashModalOpen] = useState(false);
+  const [stashMessage, setStashMessage] = useState("");
+  const [stashIncludeUntracked, setStashIncludeUntracked] = useState(true);
+  const [isStashing, setIsStashing] = useState(false);
+  const [stashBusyId, setStashBusyId] = useState<string | null>(null);
+  const [stashDropTarget, setStashDropTarget] = useState<StashEntry | null>(null);
 
   // -------------------------------------------------------------------------
   // Toplu Stage / Unstage
@@ -780,6 +827,118 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
   );
 
   // -------------------------------------------------------------------------
+  // v0.2 — Ignore & Stash eylemleri
+  // -------------------------------------------------------------------------
+
+  const refreshStashes = useCallback(async () => {
+    if (!repoId) {
+      setStashes([]);
+      return;
+    }
+    try {
+      setStashes(await repositoryStashList(repoId));
+    } catch {
+      // Panel boş kalır; ana status akışı etkilenmez.
+    }
+  }, [repoId]);
+
+  // Depo değişince stash sayısını tazele (panel kapalıyken de rozet doğru olsun).
+  useEffect(() => {
+    const timer = setTimeout(() => void refreshStashes(), 0);
+    return () => clearTimeout(timer);
+  }, [refreshStashes]);
+
+  const handleIgnore = useCallback(
+    async (file: ChangedFile, scope: "repo" | "local") => {
+      if (!repoId) return;
+      setIsIgnoring(true);
+      try {
+        const res = await repositoryIgnoreFile(repoId, file.path, scope);
+        const newStatus = await repositoryGetStatus(repoId);
+        setStatus(newStatus);
+        onStatusChanged?.(newStatus);
+        setIgnoreTarget(null);
+        notify.success(
+          "Yoksayıldı",
+          `${res.pattern} · ${scope === "repo" ? ".gitignore" : "yalnız bu makine"}`
+        );
+      } catch (err) {
+        const e = err as AppError;
+        setActionError(e.message ?? "Yoksayma işlemi başarısız oldu.");
+        setIgnoreTarget(null);
+      } finally {
+        setIsIgnoring(false);
+      }
+    },
+    [notify, onStatusChanged, repoId]
+  );
+
+  const handleStashPush = useCallback(async () => {
+    if (!repoId) return;
+    setIsStashing(true);
+    try {
+      const newStatus = await repositoryStashPush(
+        repoId,
+        stashMessage.trim() || undefined,
+        stashIncludeUntracked
+      );
+      setStatus(newStatus);
+      onStatusChanged?.(newStatus);
+      setStashModalOpen(false);
+      setStashMessage("");
+      await refreshStashes();
+      notify.success("Değişiklikler kenara alındı", stashMessage.trim() || "stash@ kaydedildi");
+    } catch (err) {
+      const e = err as AppError;
+      setActionError(e.message ?? "Stash alınamadı.");
+    } finally {
+      setIsStashing(false);
+    }
+  }, [notify, onStatusChanged, refreshStashes, repoId, stashIncludeUntracked, stashMessage]);
+
+  const handleStashRestore = useCallback(
+    async (entry: StashEntry, mode: "apply" | "pop") => {
+      if (!repoId) return;
+      setStashBusyId(entry.index);
+      try {
+        const newStatus =
+          mode === "pop"
+            ? await repositoryStashPop(repoId, entry.index)
+            : await repositoryStashApply(repoId, entry.index);
+        setStatus(newStatus);
+        onStatusChanged?.(newStatus);
+        await refreshStashes();
+        notify.success(
+          mode === "pop" ? "Stash geri yüklendi" : "Stash uygulandı",
+          mode === "pop" ? `#${entry.index} listeden düşürüldü` : `#${entry.index} korundu`
+        );
+      } catch (err) {
+        const e = err as AppError;
+        setActionError(e.message ?? "Stash geri yüklenemedi.");
+        await refreshStashes();
+      } finally {
+        setStashBusyId(null);
+      }
+    },
+    [notify, onStatusChanged, refreshStashes, repoId]
+  );
+
+  const handleStashDrop = useCallback(async () => {
+    if (!repoId || !stashDropTarget) return;
+    setStashBusyId(stashDropTarget.index);
+    try {
+      setStashes(await repositoryStashDrop(repoId, stashDropTarget.index));
+      setStashDropTarget(null);
+      notify.info("Stash silindi", `#${stashDropTarget.index}`);
+    } catch (err) {
+      const e = err as AppError;
+      setActionError(e.message ?? "Stash silinemedi.");
+    } finally {
+      setStashBusyId(null);
+    }
+  }, [notify, repoId, stashDropTarget]);
+
+  // -------------------------------------------------------------------------
   // Render helpers
   // -------------------------------------------------------------------------
 
@@ -860,11 +1019,93 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
               >
                 Tümünü Stage Et
               </button>
+              <button
+                type="button"
+                onClick={() => setStashModalOpen(true)}
+                disabled={!repoId || isStashing}
+                title="Değişiklikleri stash'le (kenara al)"
+                className="flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300 disabled:opacity-40 font-medium transition-colors cursor-pointer"
+                aria-label="Değişiklikleri kenara al"
+              >
+                <Archive className="w-3 h-3" />
+                Kenara Al
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !stashPanelOpen;
+                  setStashPanelOpen(next);
+                  if (next) void refreshStashes();
+                }}
+                className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 font-medium transition-colors cursor-pointer"
+                aria-expanded={stashPanelOpen}
+                aria-label="Stash listesini göster/gizle"
+              >
+                <PackageOpen className="w-3 h-3" />
+                Stash ({stashes.length})
+              </button>
               {isStatusLoading && (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
               )}
             </div>
           </div>
+
+          {/* Stash paneli (v0.2) */}
+          {stashPanelOpen && (
+            <div className="mx-3 mt-2 rounded-lg border border-slate-800 bg-slate-900/60 p-2 space-y-1.5">
+              {stashes.length === 0 && (
+                <p className="text-[11px] text-slate-500 px-1 py-1">
+                  Kenara alınmış değişiklik yok.
+                </p>
+              )}
+              {stashes.map((entry) => (
+                <div
+                  key={entry.index}
+                  className="flex items-center gap-2 rounded bg-slate-800/50 px-2 py-1.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] text-slate-200 truncate">
+                      #{entry.index} — {entry.message}
+                    </p>
+                    <p className="text-[10px] text-slate-500">{entry.date}</p>
+                  </div>
+                  {stashBusyId === entry.index ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
+                  ) : (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => void handleStashRestore(entry, "pop")}
+                        title="Geri yükle ve listeden düşür (pop)"
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-sky-600/30 text-sky-300 hover:bg-sky-600/50 transition-colors cursor-pointer"
+                        aria-label={`stash ${entry.index} pop`}
+                      >
+                        Pop
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleStashRestore(entry, "apply")}
+                        title="Kopyala (stash listede kalır)"
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/60 text-slate-300 hover:bg-slate-700 transition-colors cursor-pointer"
+                        aria-label={`stash ${entry.index} apply`}
+                      >
+                        Apply
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStashDropTarget(entry)}
+                        title="Sil (geri alınamaz)"
+                        className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-900/30 transition-colors cursor-pointer"
+                        aria-label={`stash ${entry.index} sil`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Action error */}
           {actionError && (
@@ -969,6 +1210,7 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
                         onSelect={() => handleSelectFile(fileObj, false)}
                         onStageToggle={() => void handleStage(fileObj)}
                         onDiscard={() => void handleDiscardRequest(fileObj)}
+                        onIgnore={() => setIgnoreTarget(fileObj)}
                         isStaged={false}
                         isLoading={isActionLoading}
                       />
@@ -1175,6 +1417,171 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* v0.2 — Yoksayme kapsam secimi */}
+      {ignoreTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Dosyayı yoksay"
+          onClick={() => !isIgnoring && setIgnoreTarget(null)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-sm w-full p-5 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              <EyeOff className="w-4 h-4 text-amber-400 shrink-0" />
+              <h3 className="text-sm font-bold text-slate-100">Dosyayı yoksay</h3>
+            </div>
+            <p className="text-xs text-slate-400">
+              <code className="text-slate-200 break-all">{ignoreTarget.path}</code>{" "}
+              artık değişiklik listesinde görünmeyecek. Nereye yazılsın?
+            </p>
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                disabled={isIgnoring}
+                onClick={() => void handleIgnore(ignoreTarget, "repo")}
+                className="w-full text-left rounded-lg border border-slate-700 px-3 py-2 hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <span className="block text-xs font-semibold text-slate-100">
+                  .gitignore (projeyle paylaşılır)
+                </span>
+                <span className="block text-[10px] text-slate-500 mt-0.5">
+                  Depoya commit'lenir; repoyu klonlayan herkes için geçerli olur.
+                </span>
+              </button>
+              <button
+                type="button"
+                disabled={isIgnoring}
+                onClick={() => void handleIgnore(ignoreTarget, "local")}
+                className="w-full text-left rounded-lg border border-slate-700 px-3 py-2 hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <span className="block text-xs font-semibold text-slate-100">
+                  Sadece bu makine (.git/info/exclude)
+                </span>
+                <span className="block text-[10px] text-slate-500 mt-0.5">
+                  Depoya girmez; yalnızca senin bilgisayarında yoksayılır.
+                </span>
+              </button>
+            </div>
+            <button
+              type="button"
+              disabled={isIgnoring}
+              onClick={() => setIgnoreTarget(null)}
+              className="w-full py-1.5 rounded text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+            >
+              Vazgeç
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* v0.2 — Stash alma (Kenara Al) */}
+      {stashModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Değişiklikleri kenara al"
+          onClick={() => !isStashing && setStashModalOpen(false)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-sm w-full p-5 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              <Archive className="w-4 h-4 text-amber-400 shrink-0" />
+              <h3 className="text-sm font-bold text-slate-100">Değişiklikleri kenara al</h3>
+            </div>
+            <p className="text-xs text-slate-400">
+              Tüm staged + unstaged değişiklikler geçici olarak kaldırılır ve çalışma
+              ağacı temizlenir. İstediğin zaman geri yükleyebilirsin.
+            </p>
+            <input
+              type="text"
+              value={stashMessage}
+              onChange={(e) => setStashMessage(e.target.value)}
+              placeholder="İsteğe bağlı açıklama (örn. wip: arama filtresi)"
+              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
+            />
+            <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={stashIncludeUntracked}
+                onChange={(e) => setStashIncludeUntracked(e.target.checked)}
+                className="rounded border-slate-600 bg-slate-950 accent-amber-500"
+              />
+              Untracked dosyalar da dahil olsun
+            </label>
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setStashModalOpen(false)}
+                disabled={isStashing}
+                className="flex-1 py-1.5 rounded text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+              >
+                İptal
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleStashPush()}
+                disabled={isStashing}
+                className="flex-1 py-1.5 rounded text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {isStashing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Kenara Al</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* v0.2 — Stash silme onayi */}
+      {stashDropTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Stash'i sil"
+          onClick={() => setStashDropTarget(null)}
+        >
+          <div
+            className="bg-slate-900 border border-rose-800/50 rounded-xl shadow-2xl max-w-sm w-full p-5 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              <Trash2 className="w-4 h-4 text-rose-400 shrink-0" />
+              <h3 className="text-sm font-bold text-slate-100">Stash silinsin mi?</h3>
+            </div>
+            <p className="text-xs text-slate-400">
+              #{stashDropTarget.index} — {stashDropTarget.message}
+              <br />
+              <span className="text-rose-300/80 mt-1 inline-block">
+                Bu işlem geri alınamaz; stash içeriği kalıcı olarak silinir.
+              </span>
+            </p>
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setStashDropTarget(null)}
+                className="flex-1 py-1.5 rounded text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleStashDrop()}
+                className="flex-1 py-1.5 rounded text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition-colors"
+              >
+                Kalıcı Olarak Sil
+              </button>
+            </div>
           </div>
         </div>
       )}

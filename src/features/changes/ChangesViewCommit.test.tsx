@@ -14,6 +14,12 @@ vi.mock("../../lib/tauriCommands", () => ({
   repositoryCommit: vi.fn(),
   repositoryGetIdentity: vi.fn(),
   repositorySetIdentity: vi.fn(),
+  repositoryIgnoreFile: vi.fn(),
+  repositoryStashPush: vi.fn(),
+  repositoryStashList: vi.fn().mockResolvedValue([]),
+  repositoryStashApply: vi.fn(),
+  repositoryStashPop: vi.fn(),
+  repositoryStashDrop: vi.fn(),
 }));
 
 const mockStatusWithStaged: GitStatus = {

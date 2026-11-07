@@ -28,6 +28,8 @@ import type {
   GitHubPublishResult,
   GitHubRepoPage,
   GitIdentity,
+  IgnoredFile,
+  StashEntry,
   GitStatus,
   HistoryOutput,
   PollResult,
@@ -283,6 +285,52 @@ export async function repositoryCommit(
   amend = false
 ): Promise<CommitResult> {
   return tauriCall<CommitResult>("repository_commit", { repoId, message, amend });
+}
+
+/** Untracked bir öğeyi yoksayma dosyasına ekler (v0.2). */
+export async function repositoryIgnoreFile(
+  repoId: string,
+  path: string,
+  scope: "repo" | "local"
+): Promise<IgnoredFile> {
+  return tauriCall<IgnoredFile>("repository_ignore_file", { repoId, path, scope });
+}
+
+/** Çalışma ağacını stash'ler; güncel durumu döner (v0.2). */
+export async function repositoryStashPush(
+  repoId: string,
+  message?: string,
+  includeUntracked?: boolean
+): Promise<GitStatus> {
+  return tauriCall<GitStatus>("repository_stash_push", {
+    repoId,
+    message: message ?? null,
+    includeUntracked: includeUntracked ?? null,
+  });
+}
+
+export async function repositoryStashList(repoId: string): Promise<StashEntry[]> {
+  return tauriCall<StashEntry[]>("repository_stash_list", { repoId });
+}
+
+/** Stash'i uygular; stash listede kalır (v0.2). */
+export async function repositoryStashApply(
+  repoId: string,
+  id: string
+): Promise<GitStatus> {
+  return tauriCall<GitStatus>("repository_stash_apply", { repoId, id });
+}
+
+/** Stash'i uygular ve listeden düşürür (v0.2). */
+export async function repositoryStashPop(repoId: string, id: string): Promise<GitStatus> {
+  return tauriCall<GitStatus>("repository_stash_pop", { repoId, id });
+}
+
+export async function repositoryStashDrop(
+  repoId: string,
+  id: string
+): Promise<StashEntry[]> {
+  return tauriCall<StashEntry[]>("repository_stash_drop", { repoId, id });
 }
 
 /** Reads commit history with pagination. */
