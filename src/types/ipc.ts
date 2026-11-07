@@ -95,6 +95,8 @@ export interface AppSettings {
   active_github_account_id: string | null;
   auto_fetch: boolean;
   auto_fetch_minutes: number;
+  /** v0.2 madde 12: ilk çalışma yönlendirmesi tamamlandı/atlandı mı? */
+  onboarding_completed: boolean;
 }
 
 export interface AppSettingsUpdate {
@@ -106,6 +108,7 @@ export interface AppSettingsUpdate {
   active_github_account_id?: string | null;
   auto_fetch?: boolean;
   auto_fetch_minutes?: number;
+  onboarding_completed?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +139,8 @@ export interface RepositoryRecord {
   updated_at: string;
   /** True when the registered path no longer exists on disk. */
   missing: boolean;
+  /** v0.2 madde 10 — kullanıcı tarafından sabitlenmiş mi? */
+  pinned: boolean;
 }
 
 // ---------------------------------------------------------------------------

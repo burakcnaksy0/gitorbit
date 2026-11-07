@@ -30,6 +30,7 @@ export const mockSettings: AppSettings = {
   active_github_account_id: null,
   auto_fetch: true,
   auto_fetch_minutes: 3,
+  onboarding_completed: true,
 };
 
 export const mockRepository: RepositoryRecord = {
@@ -41,6 +42,7 @@ export const mockRepository: RepositoryRecord = {
   created_at: "2026-11-01T10:00:00Z",
   updated_at: "2026-11-01T12:00:00Z",
   missing: false,
+  pinned: false,
 };
 
 export const mockStatus: GitStatus = {

@@ -288,6 +288,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           )}
         </section>
 
+        {/* v0.2 madde 12 — ilk çalışma yönlendirmesi */}
+        <section className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-100">İlk Çalışma Yönlendirmesi</h2>
+              <p className="text-[11px] text-slate-400 mt-1">
+                {settings?.onboarding_completed
+                  ? "Kapalı — hoş geldin ekranındaki 3 adımlık rehber gizleniyor."
+                  : "Açık — depo yokken hoş geldin ekranında rehber gösteriliyor."}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={!onSaveSettings || autoFetchBusy || settings?.onboarding_completed === false}
+              onClick={() =>
+                void handleAutoFetchSave({ onboarding_completed: false })
+              }
+              className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              Yeniden Göster
+            </button>
+          </div>
+        </section>
+
         {/* Git Executable Environment Section */}
         <section className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4">
           <div className="flex items-start justify-between">

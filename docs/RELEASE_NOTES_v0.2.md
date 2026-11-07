@@ -153,4 +153,32 @@ her batch'in kullanıcıya dönük notlarını tutar.
 
 ---
 
-*Sıradaki batch: sabitleme + ilk çalışma (Batch 6).*
+## Batch 6 — Cila ✅
+
+### Depo sabitleme + filtreleme
+- Depo kartlarında **pin** düğmesi: sabitlenen depo amber "Sabit" rozetiyle
+  **listede en üste** çıkar; Genel Bakış'taki "Son Açılan Depolar"da da
+  sabitlenenler önceliklidir.
+- Depolar listesindeki mevcut arama kutusu isim/yol/dal filtresi olarak
+  çalışmaya devam eder; filtre + sabitleme sırası birlikte çalışır.
+- Kalıcılık veritabanında (`repositories.pinned`, migration 3); uygulamayı
+  yeniden açınca sabitler korunur.
+
+### İlk çalışma yönlendirmesi (onboarding)
+- Yeni kurulumda (hiç depo yokken) hoş geldin ekranının üstünde **3 adımlık
+  rehber**: GitHub bağla → depo aç → ilk işlem. Tamamlanan adımda yeşil tik
+  (GitHub adımı gerçek hesap listesinden okunur — uydurulmaz).
+- "Şimdilik atla" bir daha göstermemek üzere kapatır; **Ayarlar → İlk Çalışma
+  Yönlendirmesi → Yeniden Göster** ile sıfırlanabilir.
+- Rehber, depo listesi yüklendikten sonra karar verir; mevcut kullanıcısı
+  olan kurulumlara asla göz kırpmaz.
+
+### Testler
+- Core: pinned kolonu varsayılanı, set_pinned gidiş-dönüşü, migration
+  idempotency (3 birim testi).
+- Frontend: pin sırası/filtre/toggle (5) + onboarding görünürlük koşulları
+  ve atla yazımı (4) + adım durumları (5). Toplam suite 118 yeşil.
+
+---
+
+*v0.2 kullanım paketi tamamlandı — 12/12 madde.*

@@ -6,6 +6,7 @@ import { ActionNoticeModal } from "../common/ActionNoticeModal";
 import { CommandPalette, type PaletteItem } from "../common/CommandPalette";
 import { SyncAllModal, summarizeSync } from "../common/SyncAllModal";
 import { WelcomeView } from "../../features/welcome/WelcomeView";
+import { OnboardingCards } from "../../features/welcome/OnboardingCards";
 import { RepositoryListView } from "../../features/repositories/RepositoryListView";
 import {
   NotGitChoiceModal,
@@ -45,6 +46,7 @@ import {
   repositoryList,
   repositoryRelink,
   repositoryRemove,
+  repositorySetPinned,
   openPathInFileManager,
   settingsGet,
   settingsUpdate,
@@ -273,6 +275,7 @@ export const Shell: React.FC = () => {
         operationState: status?.operation_state ?? "normal",
         conflictedCount: status?.conflicted_files.length ?? 0,
         missing: record.missing,
+        pinned: record.pinned,
       };
     });
   }, [repositories, statuses, lastCommits]);
@@ -439,6 +442,19 @@ export const Shell: React.FC = () => {
       }
     },
     [loadRepositories, notify, repositories, showError]
+  );
+
+  /** v0.2 madde 10 — sabitlemeyi aç/kapat (yalnızca DB meta verisi). */
+  const handleTogglePin = useCallback(
+    async (repo: RepositorySummary) => {
+      try {
+        await repositorySetPinned(repo.id, !(repo.pinned ?? false));
+        await loadRepositories();
+      } catch (err) {
+        showError("Sabitle", err);
+      }
+    },
+    [loadRepositories, showError]
   );
 
   const handleRelinkRepository = useCallback(
@@ -688,9 +704,31 @@ export const Shell: React.FC = () => {
 
   const renderActiveView = () => {
     switch (activeTab) {
-      case "welcome":
+      case "welcome": {
+        // v0.2 madde 12: onboarding yalnızca ayar açıkken, depo listesi
+        // yüklendikten SONRA ve hiç depo yokken görünür — açılış yarışında
+        // (önce ayar, sonra liste gelir) kurulmuş kullanıcıya göz kırpmaz.
+        const showOnboarding =
+          settings !== null &&
+          !isLoadingRepos &&
+          !settings.onboarding_completed &&
+          repositories.length === 0;
         return (
-          <WelcomeView
+          <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+            {showOnboarding && (
+              <div className="px-4 sm:px-8 pt-4 sm:pt-6 max-w-6xl mx-auto w-full shrink-0">
+                <OnboardingCards
+                  hasRepositories={repositories.length > 0}
+                  onConnectGitHub={() => setActiveTab("github")}
+                  onAddRepository={() => void handleAddRepository()}
+                  onStartFirstTask={() => setActiveTab(currentRepoId ? "changes" : "repositories")}
+                  onDismiss={() =>
+                    void handleSaveSettings({ onboarding_completed: true }).catch(() => {})
+                  }
+                />
+              </div>
+            )}
+            <WelcomeView
             repositories={summaries}
             isLoading={isLoadingRepos}
             error={reposError}
@@ -705,8 +743,10 @@ export const Shell: React.FC = () => {
             onNavigate={setActiveTab}
             onAddRepository={() => void handleAddRepository()}
             onCloneRequest={() => setActiveTab("repositories")}
-          />
+            />
+          </div>
         );
+      }
       case "repositories":
         return (
           <RepositoryListView
@@ -735,6 +775,7 @@ export const Shell: React.FC = () => {
               );
             }}
             onPublishRequest={handlePublishRequest}
+            onTogglePin={(repo) => void handleTogglePin(repo)}
           />
         );
       case "changes":

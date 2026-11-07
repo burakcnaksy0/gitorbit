@@ -124,7 +124,11 @@ export const WelcomeView: React.FC<WelcomeViewProps> = ({
               </div>
             ) : (
               <div className="space-y-2">
-                {repositories.slice(0, 5).map((repo) => (
+                {[...repositories]
+                  // v0.2 madde 10 — sabitlenenler öncelikli
+                  .sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false))
+                  .slice(0, 5)
+                  .map((repo) => (
                   <div
                     key={repo.id}
                     onClick={() => onSelectRepo(repo)}

@@ -108,6 +108,14 @@ export async function repositoryRemove(repoId: string): Promise<boolean> {
   return tauriCall<boolean>("repository_remove", { repoId });
 }
 
+/** Sabitleme bayrağını günceller (v0.2, madde 10). Güncel kaydı döner. */
+export async function repositorySetPinned(
+  repoId: string,
+  pinned: boolean
+): Promise<RepositoryRecord> {
+  return tauriCall<RepositoryRecord>("repository_set_pinned", { repoId, pinned });
+}
+
 /** Returns the current Git status for a repository. */
 export async function repositoryGetStatus(repoId: string): Promise<GitStatus> {
   return tauriCall<GitStatus>("repository_get_status", { repoId });

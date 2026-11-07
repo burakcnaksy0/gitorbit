@@ -33,6 +33,8 @@ export interface RepositorySummary {
   conflictedCount?: number;
   /** True when the registered path is gone from disk. */
   missing?: boolean;
+  /** v0.2 — kullanıcı listesinde sabitlenmiş mi? */
+  pinned?: boolean;
 }
 
 export interface ChangeFileSummary {

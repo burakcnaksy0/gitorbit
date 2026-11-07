@@ -10,6 +10,8 @@ import {
   GitBranch,
   Link2,
   Loader2,
+  Pin,
+  PinOff,
   Plus,
   Rocket,
   Search,
@@ -34,6 +36,8 @@ interface RepositoryListViewProps {
   onOpenInFileManager: (path: string) => void;
   /** Shown for repos without an `origin`: publish to GitHub. */
   onPublishRequest?: (repo: RepositorySummary) => void;
+  /** v0.2 madde 10 — sabitlemeyi aç/kapat. */
+  onTogglePin?: (repo: RepositorySummary) => void;
 }
 
 type ModalState =
@@ -52,6 +56,7 @@ export const RepositoryListView: React.FC<RepositoryListViewProps> = ({
   onRelinkRepository,
   onOpenInFileManager,
   onPublishRequest,
+  onTogglePin,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [modal, setModal] = useState<ModalState>({ kind: "none" });
@@ -70,6 +75,12 @@ export const RepositoryListView: React.FC<RepositoryListViewProps> = ({
       (repo.currentBranch ?? "").toLowerCase().includes(term)
     );
   });
+
+  // v0.2 madde 10 — sabitlenenler üstte; grup içesinde gelen sıra (son
+  // açılan) korunur (Array.sort kararlıdır).
+  const visibleRepos = [...filteredRepos].sort(
+    (a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false)
+  );
 
   const handleRelink = useCallback(
     async (repo: RepositorySummary) => {
@@ -199,7 +210,7 @@ export const RepositoryListView: React.FC<RepositoryListViewProps> = ({
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredRepos.map((repo) => {
+          {visibleRepos.map((repo) => {
             const isSelected = currentRepo?.id === repo.id;
             return (
               <div
@@ -233,11 +244,43 @@ export const RepositoryListView: React.FC<RepositoryListViewProps> = ({
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
+                      {repo.pinned && (
+                        <span
+                          className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-full bg-amber-950/60 text-amber-400 border border-amber-800/60 font-medium"
+                          title="Sabitlenmiş depo"
+                        >
+                          <Pin className="w-2.5 h-2.5 mr-0.5" />
+                          Sabit
+                        </span>
+                      )}
                       {isSelected && (
                         <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-sky-950 text-sky-400 border border-sky-800 font-medium">
                           <Check className="w-3 h-3" />
                           Aktif
                         </span>
+                      )}
+                      {onTogglePin && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onTogglePin(repo);
+                          }}
+                          className={`p-1 rounded transition-colors ${
+                            repo.pinned
+                              ? "text-amber-400 hover:text-amber-300 hover:bg-amber-950/40"
+                              : "text-slate-500 hover:text-slate-200 hover:bg-slate-800"
+                          }`}
+                          title={repo.pinned ? "Sabitlemeyi kaldır" : "Depoyu sabitle"}
+                          aria-label={`${repo.name} deposunu ${repo.pinned ? "sabitlemeyi kaldır" : "sabitle"}`}
+                          aria-pressed={repo.pinned ?? false}
+                        >
+                          {repo.pinned ? (
+                            <Pin className="w-3.5 h-3.5" />
+                          ) : (
+                            <PinOff className="w-3.5 h-3.5" />
+                          )}
+                        </button>
                       )}
                       <button
                         type="button"

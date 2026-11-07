@@ -17,6 +17,7 @@ export const repositoryAdd = vi.fn();
 export const repositoryInit = vi.fn();
 export const repositoryList = vi.fn();
 export const repositoryRemove = vi.fn();
+export const repositorySetPinned = vi.fn();
 export const repositoryGetStatus = vi.fn();
 export const repositoryGetDetails = vi.fn();
 export const repositoryRelink = vi.fn();
