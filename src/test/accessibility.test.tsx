@@ -30,7 +30,7 @@ describe("GitOrbit — Accessibility & Keyboard Navigation (a11y)", () => {
     vi.mocked(tauriCommands.githubListAccounts).mockResolvedValue([]);
   });
 
-  it("opens the search notice and closes it with Escape or the close button", async () => {
+  it("opens the command palette from the search button and closes it with Escape", async () => {
     render(<App />);
 
     const searchBtn = screen
@@ -39,15 +39,27 @@ describe("GitOrbit — Accessibility & Keyboard Navigation (a11y)", () => {
     fireEvent.click(searchBtn);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Global Arama" })).toBeInTheDocument();
+      expect(screen.getByRole("dialog", { name: "Komut paleti" })).toBeInTheDocument();
     });
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
     await waitFor(() => {
       expect(
-        screen.queryByRole("heading", { name: "Global Arama" })
+        screen.queryByRole("dialog", { name: "Komut paleti" })
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("Ctrl+K opens the command palette", async () => {
+    render(<App />);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Komut paleti" })).toBeInTheDocument();
     });
   });
 

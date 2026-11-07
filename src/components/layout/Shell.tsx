@@ -3,6 +3,7 @@ import { TopBar } from "./TopBar";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { ActionNoticeModal } from "../common/ActionNoticeModal";
+import { CommandPalette, type PaletteItem } from "../common/CommandPalette";
 import { WelcomeView } from "../../features/welcome/WelcomeView";
 import { RepositoryListView } from "../../features/repositories/RepositoryListView";
 import {
@@ -20,6 +21,7 @@ import type {
   AppInfo,
   AppSettings,
   AppSettingsUpdate,
+  BranchInfo,
   CommitInfo,
   GitEnvironment,
   GitStatus,
@@ -30,9 +32,11 @@ import {
   appGetEnvironment,
   appGetInfo,
   repositoryAdd,
+  repositoryCheckoutBranch,
   repositoryInit,
   repositoryClone,
   repositoryFetch,
+  repositoryGetBranches,
   repositoryPull,
   repositoryPush,
   repositoryGetHistory,
@@ -47,6 +51,7 @@ import {
 import { pickDirectory } from "../../lib/directoryPicker";
 import { notifySystem } from "../../lib/notifications";
 import { useAutoFetch } from "../../lib/useAutoFetch";
+import { useFolderDrop } from "../../lib/useFolderDrop";
 import { useNotify } from "../common/Toast";
 
 // ---------------------------------------------------------------------------
@@ -130,6 +135,10 @@ export const Shell: React.FC = () => {
 
   const [notice, setNotice] = useState<NoticeState>(CLOSED_NOTICE);
   const notify = useNotify();
+
+  // v0.2 — Komut paleti + sürükle-bırak state
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteBranches, setPaletteBranches] = useState<BranchInfo[]>([]);
 
   const showNotice = useCallback(
     (
@@ -537,25 +546,138 @@ export const Shell: React.FC = () => {
   }, [handleSaveSettings, isDarkTheme]);
 
   // -------------------------------------------------------------------------
-  // Keyboard shortcut (Ctrl+K) — honest "not implemented" notice
+  // v0.2 — Komut paleti (madde 5): Ctrl+K / Ctrl+Shift+P
   // -------------------------------------------------------------------------
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      const key = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && (key === "k" || (key === "p" && e.shiftKey))) {
         e.preventDefault();
-        showNotice(
-          "Komut Paleti",
-          "Komut Paleti & Arama",
-          "Planlanan özellik",
-          "Klavye ile hızlı arama henüz uygulanmadı. Şimdilik depoları ve dosyaları ilgili sekmelerden arayabilirsiniz."
-        );
+        setPaletteOpen((open) => !open);
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showNotice]);
+  }, []);
+
+  // Palet açılınca aktif deponun dallarını tazele (bayat listeyle checkout yok).
+  useEffect(() => {
+    if (!paletteOpen || !currentRepo?.id) {
+      return;
+    }
+    let ignore = false;
+    void repositoryGetBranches(currentRepo.id)
+      .then((branches) => {
+        if (!ignore) setPaletteBranches(branches.filter((b) => !b.is_remote));
+      })
+      .catch(() => {
+        if (!ignore) setPaletteBranches([]);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [paletteOpen, currentRepo?.id]);
+
+  const handlePaletteCheckout = useCallback(
+    async (branch: string) => {
+      if (!currentRepo?.id) return;
+      try {
+        await repositoryCheckoutBranch(currentRepo.id, branch);
+        await loadRepositories();
+        notify.success("Dala geçildi", branch);
+      } catch (err) {
+        showError("Dala Geç", err);
+      }
+    },
+    [currentRepo?.id, loadRepositories, notify, showError]
+  );
+
+  const paletteItems = useMemo<PaletteItem[]>(() => {
+    const items: PaletteItem[] = [
+      { id: "tab.welcome", section: "Sekmeler", label: "Genel Bakış", run: () => setActiveTab("welcome") },
+      { id: "tab.repositories", section: "Sekmeler", label: "Depolar", run: () => setActiveTab("repositories") },
+      { id: "tab.changes", section: "Sekmeler", label: "Değişiklikler", run: () => setActiveTab("changes") },
+      { id: "tab.history", section: "Sekmeler", label: "Geçmiş", run: () => setActiveTab("history") },
+      { id: "tab.branches", section: "Sekmeler", label: "Dallar", run: () => setActiveTab("branches") },
+      { id: "tab.github", section: "Sekmeler", label: "GitHub", run: () => setActiveTab("github") },
+      { id: "tab.settings", section: "Sekmeler", label: "Ayarlar", run: () => setActiveTab("settings") },
+    ];
+
+    for (const repo of summaries) {
+      items.push({
+        id: `repo.${repo.id}`,
+        section: "Depolar",
+        label: repo.name,
+        hint: repo.path,
+        run: () => {
+          setCurrentRepoId(repo.id);
+          setActiveTab("changes");
+        },
+      });
+    }
+
+    for (const branch of paletteBranches) {
+      if (branch.is_current) continue;
+      items.push({
+        id: `branch.${currentRepo?.id ?? "?"}.${branch.name}`,
+        section: "Dallar",
+        label: `Dala geç: ${branch.name}`,
+        hint: currentRepo?.name,
+        run: () => void handlePaletteCheckout(branch.name),
+      });
+    }
+
+    items.push(
+      { id: "action.add-repo", section: "İşlemler", label: "Depo Ekle", hint: "Klasörden kaydet", run: () => void handleAddRepository() },
+      { id: "action.clone", section: "İşlemler", label: "GitHub'dan Klonla", hint: "Depolar sekmesi", run: () => setActiveTab("repositories") },
+      { id: "action.sync", section: "İşlemler", label: "Senkronize Et (Fetch)", hint: currentRepo?.name, run: () => void handleSync() },
+      { id: "action.pull", section: "İşlemler", label: "İçe Aktar (Pull)", hint: currentRepo?.name, run: () => void handlePull() },
+      { id: "action.push", section: "İşlemler", label: "Dışa Aktar (Push)", hint: currentRepo?.name, run: () => void handlePush() }
+    );
+
+    if (currentRepo && !currentRepo.upstream) {
+      items.push({
+        id: "action.publish",
+        section: "İşlemler",
+        label: "GitHub'da Yayınla",
+        hint: `${currentRepo.name} · origin yok`,
+        run: () => setPublishTarget({ repoId: currentRepo.id, name: currentRepo.name }),
+      });
+    }
+
+    return items;
+  }, [
+    currentRepo,
+    handleAddRepository,
+    handlePaletteCheckout,
+    handlePull,
+    handlePush,
+    handleSync,
+    paletteBranches,
+    summaries,
+  ]);
+
+  // -------------------------------------------------------------------------
+  // v0.2 — Klasör sürükle-bırak (madde 9)
+  // -------------------------------------------------------------------------
+
+  const { isDragging } = useFolderDrop(
+    useCallback(
+      (paths: string[]) => {
+        if (paths.length === 0) return;
+        if (paths.length > 1) {
+          notify.info(
+            "Birden fazla öğe bırakıldı",
+            `İlk klasör ekleniyor: ${paths[0]}`
+          );
+        }
+        void openRepository(paths[0]);
+      },
+      [notify, openRepository]
+    )
+  );
 
   // -------------------------------------------------------------------------
   // Views
@@ -663,14 +785,7 @@ export const Shell: React.FC = () => {
         currentRepo={currentRepo}
         appVersion={appInfo?.version ?? null}
         onRepoClick={() => setActiveTab("repositories")}
-        onSearchClick={() =>
-          showNotice(
-            "Global Arama",
-            "Global Arama",
-            "Planlanan özellik",
-            "Depolar ve komutlar arasında arama henüz uygulanmadı."
-          )
-        }
+        onSearchClick={() => setPaletteOpen(true)}
         isDarkTheme={isDarkTheme}
         onToggleTheme={handleToggleTheme}
       />
@@ -724,6 +839,23 @@ export const Shell: React.FC = () => {
           onClose={() => setPublishTarget(null)}
           onPublished={(res) => void handlePublished(res)}
         />
+      )}
+
+      <CommandPalette open={paletteOpen} items={paletteItems} onClose={() => setPaletteOpen(false)} />
+
+      {/* v0.2 — klasör bırakma overlay'i (madde 9) */}
+      {isDragging && (
+        <div
+          className="fixed inset-0 z-[70] pointer-events-none flex items-center justify-center bg-sky-950/70 backdrop-blur-sm"
+          aria-hidden="true"
+        >
+          <div className="rounded-2xl border-2 border-dashed border-sky-400 bg-slate-900/90 px-10 py-8 text-center">
+            <p className="text-lg font-bold text-sky-200">Klasörü buraya bırakın</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Git deposu olarak açılacak · düz klasörse başlatma seçenekleri sunulacak
+            </p>
+          </div>
+        </div>
       )}
 
       <ActionNoticeModal

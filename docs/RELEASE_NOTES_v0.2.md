@@ -74,6 +74,27 @@ her batch'in kullanıcıya dönük notlarını tutar.
 
 ---
 
-*Sıradaki batch'ler: komut paleti + sürükle-bırak (Batch 3), geçmiş grafiği
-(Batch 4), çakışma paneli + tümünü senkronize (Batch 5), sabitleme + ilk
-çalışma (Batch 6).*
+## Batch 3 — Hız ✅
+
+### Komut paleti (Ctrl+K / Ctrl+Shift+P)
+- Arama çubuğu ve Ctrl+K artık gerçek komut paletini açar (placeholder yok).
+- Kaynaklar: **Sekmeler**, **Depolar** (doğrudan depo aç), **Dallar** (aktif
+  deponun dallarına geçiş — palet açılınca tazelenir), **İşlemler** (Depo Ekle,
+  Klonla, Fetch, Pull, Push; origin yoksa "GitHub'da Yayınla").
+- Bağımlılıksız fuzzy eşleştirme (tam alt-dizi > kelime başı > dağınık);
+  ↑↓ / Enter / Esc; son 5 komut hatırlanır ve boş sorguda en üstte gelir.
+
+### Klasör sürükle-bırak
+- Klasörü pencereye bırak → tam ekran "Klasörü buraya bırakın" çerçevesi →
+  bırakınca depo olarak açılır; düz klasörde mevcut başlat/yayınla seçeneği
+  çıkar. Birden fazla öğe bırakılırsa ilki alınır ve toast ile belirtilir.
+
+### Testler
+- fuzzy skor/filtre + son kullanılanlar (8), palet klavye/akış (7),
+  sürükle-bırak kancası (2). a11y testi yeni palet davranışına güncellendi.
+- Toplam suite: 90 yeşil.
+
+---
+
+*Sıradaki batch'ler: geçmiş grafiği (Batch 4), çakışma paneli + tümünü
+senkronize (Batch 5), sabitleme + ilk çalışma (Batch 6).*
