@@ -226,6 +226,11 @@ pub struct GitHubAccount {
     pub connection_status: GitHubConnectionStatus,
     pub created_at: String,
     pub last_used_at: Option<String>,
+    /// v0.2.1: access token'ın bitişi (RFC3339). Bitiş tarihi sır DEĞİLDİR
+    /// ve yenileme kararında kullanılır; token'ın kendisi her zaman yalnızca
+    /// OS anahtarlığındadır. `None` = süre dolmuyor ya da eski kayıt.
+    #[serde(default)]
+    pub token_expires_at: Option<String>,
 }
 
 /// Public profile/overview data for a connected GitHub account, fetched live

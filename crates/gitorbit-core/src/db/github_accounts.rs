@@ -22,15 +22,16 @@ impl GitHubAccountDao {
             r#"
             INSERT INTO github_accounts
                 (id, provider, provider_user_id, login, display_name, avatar_url,
-                 credential_ref, connection_status, created_at, last_used_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                 credential_ref, connection_status, created_at, last_used_at, token_expires_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
             ON CONFLICT(provider, provider_user_id) DO UPDATE SET
                 login             = excluded.login,
                 display_name      = excluded.display_name,
                 avatar_url        = excluded.avatar_url,
                 credential_ref    = excluded.credential_ref,
                 connection_status = excluded.connection_status,
-                last_used_at      = excluded.last_used_at
+                last_used_at      = excluded.last_used_at,
+                token_expires_at  = excluded.token_expires_at
             "#,
             params![
                 account.id,
@@ -43,6 +44,7 @@ impl GitHubAccountDao {
                 Self::status_to_str(account.connection_status),
                 account.created_at,
                 account.last_used_at,
+                account.token_expires_at,
             ],
         )
         .map_err(|e| CommandError::database_error(format!("Hesap kaydedilemedi: {}", e)))?;
@@ -86,6 +88,23 @@ impl GitHubAccountDao {
         Ok(())
     }
 
+    /// Stores (or clears) the access-token expiry timestamp. Only the RFC3339
+    /// instant is written — never any token material.
+    pub fn set_token_expires_at(
+        conn: &Connection,
+        id: &str,
+        expires_at: Option<&str>,
+    ) -> Result<(), CommandError> {
+        conn.execute(
+            "UPDATE github_accounts SET token_expires_at = ?1 WHERE id = ?2",
+            params![expires_at, id],
+        )
+        .map_err(|e| {
+            CommandError::database_error(format!("token_expires_at güncellenemedi: {}", e))
+        })?;
+        Ok(())
+    }
+
     // -----------------------------------------------------------------------
     // Read operations
     // -----------------------------------------------------------------------
@@ -95,7 +114,8 @@ impl GitHubAccountDao {
         let mut stmt = conn
             .prepare(
                 "SELECT id, provider, provider_user_id, login, display_name, avatar_url,
-                        credential_ref, connection_status, created_at, last_used_at
+                        credential_ref, connection_status, created_at, last_used_at,
+                        token_expires_at
                  FROM github_accounts
                  ORDER BY created_at ASC",
             )
@@ -121,7 +141,8 @@ impl GitHubAccountDao {
         let mut stmt = conn
             .prepare(
                 "SELECT id, provider, provider_user_id, login, display_name, avatar_url,
-                        credential_ref, connection_status, created_at, last_used_at
+                        credential_ref, connection_status, created_at, last_used_at,
+                        token_expires_at
                  FROM github_accounts WHERE id = ?1",
             )
             .map_err(|e| {
@@ -184,6 +205,7 @@ impl GitHubAccountDao {
             connection_status: Self::str_to_status(&status_str),
             created_at: row.get(8)?,
             last_used_at: row.get(9)?,
+            token_expires_at: row.get(10)?,
         })
     }
 

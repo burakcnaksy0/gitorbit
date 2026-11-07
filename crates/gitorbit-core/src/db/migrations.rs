@@ -153,6 +153,38 @@ impl MigrationManager {
             })?;
         }
 
+        // Migration 4: OAuth access token bitiş zamanı (github_accounts).
+        // SECURITY: yalnızca bitiş ZAMANI saklanır (RFC3339) — token'ın
+        // kendisi değil. Yenileme kararında kullanılır.
+        if current_version.unwrap_or(0) < 4 {
+            let tx = conn.transaction().map_err(|e| {
+                CommandError::database_error(format!("Transaction başlatılamadı: {}", e))
+            })?;
+
+            tx.execute_batch(
+                r#"
+                ALTER TABLE github_accounts
+                    ADD COLUMN token_expires_at TEXT;
+                "#,
+            )
+            .map_err(|e| {
+                CommandError::database_error(format!("Migration 4 tablosu güncellenemedi: {}", e))
+            })?;
+
+            let now_m4 = Utc::now().to_rfc3339();
+            tx.execute(
+                "INSERT INTO schema_migrations (version, applied_at) VALUES (4, ?1)",
+                [&now_m4],
+            )
+            .map_err(|e| {
+                CommandError::database_error(format!("Migration 4 kaydedilemedi: {}", e))
+            })?;
+
+            tx.commit().map_err(|e| {
+                CommandError::database_error(format!("Migration 4 commit edilemedi: {}", e))
+            })?;
+        }
+
         Ok(())
     }
 }

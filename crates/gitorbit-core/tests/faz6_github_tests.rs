@@ -15,11 +15,12 @@ use gitorbit_core::CommandError;
 /// - AC6: Repository listing respects pagination
 /// - AC7: Device-flow expiry is detected
 use gitorbit_core::credential_store::InMemoryCredentialStore;
+use gitorbit_core::CredentialStore;
 use gitorbit_core::db::Database;
 use gitorbit_core::models::{GitHubConnectionStatus, PollResult};
 use gitorbit_core::services::github_service::{
     GitHubHttpClient, GitHubService, PendingDeviceFlow, RawCreatedRepo, RawDeviceFlowResponse,
-    RawOwner, RawPollResponse, RawRepoResponse, RawUserResponse,
+    RawOwner, RawPollResponse, RawRefreshResponse, RawRepoResponse, RawUserResponse,
 };
 use std::sync::Mutex;
 
@@ -49,6 +50,8 @@ impl MockGitHubHttpClient {
                 access_token: "test_token_xyz".to_string(),
                 token_type: "bearer".to_string(),
                 scope: "read:user,public_repo".to_string(),
+                expires_in: None,
+                refresh_token: None,
             }]),
             user_resp: RawUserResponse {
                 id: 12345,
@@ -96,6 +99,8 @@ impl MockGitHubHttpClient {
                     access_token: "test_token_abc".to_string(),
                     token_type: "bearer".to_string(),
                     scope: "read:user,public_repo".to_string(),
+                    expires_in: None,
+                    refresh_token: None,
                 },
             ]),
             user_resp: RawUserResponse {
@@ -210,7 +215,28 @@ impl GitHubHttpClient for MockGitHubHttpClient {
             full_name: format!("testuser/{}", name),
             html_url: format!("https://github.com/testuser/{}", name),
             clone_url: format!("https://github.com/testuser/{}.git", name),
+            ssh_url: format!("git@github.com:testuser/{}.git", name),
             private,
+        })
+    }
+
+    fn refresh_access_token(
+        &self,
+        _client_id: &str,
+        refresh_token: &str,
+    ) -> Result<RawRefreshResponse, CommandError> {
+        // Test convention: "BAD_REFRESH" simulates a rejected grant, anything
+        // else returns a rotated token pair.
+        if refresh_token == "BAD_REFRESH" {
+            return Ok(RawRefreshResponse::Error {
+                error: "bad_verification_code".to_string(),
+                error_description: Some("rejected".to_string()),
+            });
+        }
+        Ok(RawRefreshResponse::Success {
+            access_token: "refreshed_token_456".to_string(),
+            expires_in: Some(3600),
+            refresh_token: Some("rotated_refresh_789".to_string()),
         })
     }
 }
@@ -655,4 +681,187 @@ fn test_create_remote_repo_requires_connected_account() {
         .create_remote_repo(&db, "nope", "ok-ad", None, false)
         .expect_err("hesap yoksa hata");
     assert_eq!(err.code, "ACCOUNT_NOT_FOUND");
+}
+
+// ---------------------------------------------------------------------------
+// v0.2.1: OAuth refresh-token akışı
+// ---------------------------------------------------------------------------
+//
+// MockHTTP convention: refresh_access_token returns a rotated pair for any
+// refresh token except "BAD_REFRESH", which simulates a rejected grant.
+
+/// Poll Success carrying expiry + refresh token (GitHub App with expiry on).
+fn client_with_refresh_on_poll() -> MockGitHubHttpClient {
+    let client = MockGitHubHttpClient::new_with_success_on_first_poll();
+    *client.poll_responses.lock().unwrap() = vec![RawPollResponse::Success {
+        access_token: "initial_token".to_string(),
+        token_type: "bearer".to_string(),
+        scope: "read:user,public_repo".to_string(),
+        expires_in: Some(3600),
+        refresh_token: Some("initial_refresh".to_string()),
+    }];
+    client
+}
+
+/// Log in with `svc`, returning the created account.
+fn login(svc: &GitHubService, db: &Database, pending: &PendingDeviceFlow) -> gitorbit_core::models::GitHubAccount {
+    let session_token = pending.session_token.clone();
+    match svc.poll_device_flow(db, pending, &session_token).expect("poll") {
+        PollResult::Success { account } => *account,
+        PollResult::Pending => panic!("Expected success"),
+    }
+}
+
+#[test]
+fn test_refresh_flow_login_stores_refresh_key_and_expiry() {
+    let db = make_db();
+    let svc = make_service(client_with_refresh_on_poll());
+
+    let (_session, pending) = svc.begin_device_flow().expect("begin");
+    let account = login(&svc, &db, &pending);
+
+    // DB sees only the expiry TIMESTAMP — never token material.
+    assert!(
+        account.token_expires_at.is_some(),
+        "expires_in geldiyse bitiş zamanı DB'ye yazılmalı"
+    );
+    let stored = svc
+        .list_accounts(&db)
+        .expect("list")
+        .into_iter()
+        .find(|a| a.id == account.id)
+        .expect("account");
+    assert_eq!(stored.token_expires_at, account.token_expires_at);
+
+    // The refresh key lives in the credential store under "{ref}:refresh".
+    // Accessible via access_token path below; here verify status is connected.
+    assert_eq!(stored.connection_status, GitHubConnectionStatus::Connected);
+}
+
+#[test]
+fn test_refresh_flow_expired_token_auto_refreshes() {
+    let db = make_db();
+    let svc = make_service(client_with_refresh_on_poll());
+
+    let (_session, pending) = svc.begin_device_flow().expect("begin");
+    let account = login(&svc, &db, &pending);
+
+    // Simulate expiry passing.
+    db.with_conn(|conn| {
+        gitorbit_core::db::github_accounts::GitHubAccountDao::set_token_expires_at(
+            conn,
+            &account.id,
+            Some("2020-01-01T00:00:00+00:00"),
+        )
+    })
+    .expect("force expiry");
+
+    // Mock returns rotated pair for any refresh token except BAD_REFRESH.
+    let token = svc.access_token(&db, &account.id).expect("auto refresh");
+    assert_eq!(token, "refreshed_token_456");
+
+    // Rotation persisted: new expiry in DB, status still connected.
+    let stored = svc
+        .list_accounts(&db)
+        .expect("list")
+        .into_iter()
+        .find(|a| a.id == account.id)
+        .expect("account");
+    assert_eq!(stored.connection_status, GitHubConnectionStatus::Connected);
+    let expiry = stored.token_expires_at.expect("yeni bitiş yazılmalı");
+    assert_ne!(
+        expiry, "2020-01-01T00:00:00+00:00",
+        "yenileme sonrası bitiş zamanı tazelenmeli"
+    );
+}
+
+#[test]
+fn test_refresh_flow_rejected_marks_auth_expired() {
+    let db = make_db();
+    // Store pre-seeded with a refresh token the mock will reject.
+    let store = InMemoryCredentialStore::new();
+    store
+        .set_credential("github:12345", "old_token")
+        .expect("seed access");
+    store
+        .set_credential("github:12345:refresh", "BAD_REFRESH")
+        .expect("seed refresh");
+
+    let svc = GitHubService::new(Box::new(MockGitHubHttpClient::new_with_denied()), Box::new(store));
+
+    // Insert the account row directly (bypass device flow).
+    let now = "2026-01-01T00:00:00+00:00".to_string();
+    db.with_conn(|conn| {
+        gitorbit_core::db::github_accounts::GitHubAccountDao::upsert(
+            conn,
+            &gitorbit_core::models::GitHubAccount {
+                id: "acct-1".to_string(),
+                provider: "github".to_string(),
+                provider_user_id: "12345".to_string(),
+                login: "testuser".to_string(),
+                display_name: None,
+                avatar_url: None,
+                credential_ref: "github:12345".to_string(),
+                connection_status: GitHubConnectionStatus::Connected,
+                created_at: now.clone(),
+                last_used_at: None,
+                token_expires_at: Some("2020-01-01T00:00:00+00:00".to_string()),
+            },
+        )
+    })
+    .expect("seed account");
+
+    let err = svc
+        .access_token(&db, "acct-1")
+        .expect_err("reddedilen refresh hata vermeli");
+    assert_eq!(err.code, "AUTH_EXPIRED");
+
+    let stored = svc
+        .list_accounts(&db)
+        .expect("list")
+        .into_iter()
+        .find(|a| a.id == "acct-1")
+        .expect("account");
+    assert_eq!(stored.connection_status, GitHubConnectionStatus::AuthExpired);
+}
+
+#[test]
+fn test_refresh_flow_no_refresh_key_returns_old_token() {
+    let db = make_db();
+    let store = InMemoryCredentialStore::new();
+    store
+        .set_credential("github:777", "legacy_token")
+        .expect("seed");
+
+    let svc = GitHubService::new(
+        Box::new(MockGitHubHttpClient::new_with_denied()),
+        Box::new(store),
+    );
+
+    let now = "2026-01-01T00:00:00+00:00".to_string();
+    db.with_conn(|conn| {
+        gitorbit_core::db::github_accounts::GitHubAccountDao::upsert(
+            conn,
+            &gitorbit_core::models::GitHubAccount {
+                id: "acct-legacy".to_string(),
+                provider: "github".to_string(),
+                provider_user_id: "777".to_string(),
+                login: "legacy".to_string(),
+                display_name: None,
+                avatar_url: None,
+                credential_ref: "github:777".to_string(),
+                connection_status: GitHubConnectionStatus::Connected,
+                created_at: now.clone(),
+                last_used_at: None,
+                // Expired but NO refresh key: must fall back to old token.
+                token_expires_at: Some("2020-01-01T00:00:00+00:00".to_string()),
+            },
+        )
+    })
+    .expect("seed account");
+
+    let token = svc
+        .access_token(&db, "acct-legacy")
+        .expect("eski token dönmeli");
+    assert_eq!(token, "legacy_token");
 }

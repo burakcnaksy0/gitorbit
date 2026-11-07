@@ -69,6 +69,14 @@ pub trait GitHubHttpClient: Send + Sync {
         device_code: &str,
     ) -> Result<RawPollResponse, CommandError>;
 
+    /// v0.2.1 — refresh_token grant ile yeni erişim anahtarı ister.
+    /// `refresh_token` sırdır: yalnızca bu çağıran içinde yaşar, loglanmaz.
+    fn refresh_access_token(
+        &self,
+        client_id: &str,
+        refresh_token: &str,
+    ) -> Result<RawRefreshResponse, CommandError>;
+
     fn get_authenticated_user(&self, token: &str) -> Result<RawUserResponse, CommandError>;
 
     fn list_repos(
@@ -110,11 +118,64 @@ pub enum RawPollResponse {
         access_token: String,
         token_type: String,
         scope: String,
+        /// v0.2.1: GitHub App token expiry açıksa dolar (saniye).
+        #[serde(default)]
+        expires_in: Option<u64>,
+        /// v0.2.1: rotlayan yenileme anahtarı — yalnızca OS anahtarlığında
+        /// saklanır, DB'ye/arayüze asla yazılmaz.
+        #[serde(default)]
+        refresh_token: Option<String>,
     },
     Pending {
         error: String,
         error_description: Option<String>,
     },
+}
+
+/// v0.2.1 — refresh_token grant yanıtı (`grant_type=refresh_token`).
+/// GitHub hataları HTTP 200 içinde `{"error": ...}` olarak döndüğü için
+/// untagged enum olarak ayrıştırılır.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum RawRefreshResponse {
+    Success {
+        access_token: String,
+        #[serde(default)]
+        expires_in: Option<u64>,
+        /// Rotlanmış yeni yenileme anahtarı. Yalnızca OS anahtarlığında
+        /// saklanır; DB'ye/arayüze/loga asla yazılmaz.
+        #[serde(default)]
+        refresh_token: Option<String>,
+    },
+    Error {
+        error: String,
+        #[serde(default)]
+        error_description: Option<String>,
+    },
+}
+
+impl RawRefreshResponse {
+    /// Başarıysa (access_token, expires_in, refresh_token); hatayla karşılaşılırsa
+    /// AUTH_EXPIRED CommandError (yeniden bağlanma önerisiyle).
+    pub fn into_token(self) -> Result<(String, Option<u64>, Option<String>), CommandError> {
+        match self {
+            RawRefreshResponse::Success {
+                access_token,
+                expires_in,
+                refresh_token,
+            } => Ok((access_token, expires_in, refresh_token)),
+            RawRefreshResponse::Error {
+                error,
+                error_description,
+            } => {
+                let _ = error_description; // güvenlik: sunucu metnini loglamıyoruz
+                Err(CommandError::auth_expired(format!(
+                    "GitHub yenileme reddedildi ({}). Hesabı yeniden bağlayın.",
+                    error
+                )))
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -265,6 +326,26 @@ impl GitHubHttpClient for RealGitHubHttpClient {
 
         resp.into_json::<RawPollResponse>().map_err(|e| {
             CommandError::network_error(format!("Token poll yanıtı işlenemedi: {}", e))
+        })
+    }
+
+    fn refresh_access_token(
+        &self,
+        client_id: &str,
+        refresh_token: &str,
+    ) -> Result<RawRefreshResponse, CommandError> {
+        let resp = ureq::post("https://github.com/login/oauth/access_token")
+            .set("Accept", "application/json")
+            .set("User-Agent", "GitOrbit/0.1")
+            .send_form(&[
+                ("client_id", client_id),
+                ("refresh_token", refresh_token),
+                ("grant_type", "refresh_token"),
+            ])
+            .map_err(map_ureq_error)?;
+
+        resp.into_json::<RawRefreshResponse>().map_err(|e| {
+            CommandError::network_error(format!("Yenileme yanıtı işlenemedi: {}", e))
         })
     }
 
@@ -476,7 +557,12 @@ impl GitHubService {
                     true,
                 )),
             },
-            RawPollResponse::Success { access_token, .. } => {
+            RawPollResponse::Success {
+                access_token,
+                expires_in,
+                refresh_token,
+                ..
+            } => {
                 // 4. Fetch user profile (token used here — never forwarded to frontend)
                 let user = self.client.get_authenticated_user(&access_token)?;
 
@@ -485,6 +571,18 @@ impl GitHubService {
 
                 // 6. Store token in OS credential store (NEVER in DB)
                 self.store.set_credential(&credential_ref, &access_token)?;
+
+                // 6b. v0.2.1 — refresh token + bitiş zamanı. Anahtar yalnızca
+                // OS keyring'ine yazılır; DB'ye sadece bitiş ANI yazılır.
+                let refresh_ref = format!("{}:refresh", credential_ref);
+                if let Some(rt) = refresh_token.as_deref() {
+                    self.store.set_credential(&refresh_ref, rt)?;
+                } else {
+                    // Uygulama artık refresh vermiyor: eski anahtar varsa sil.
+                    let _ = self.store.delete_credential(&refresh_ref);
+                }
+                let token_expires_at = expires_in
+                    .map(|secs| (Utc::now() + Duration::from_secs(secs)).to_rfc3339());
 
                 // 7. Upsert account in DB (no token in any field)
                 let now = Utc::now().to_rfc3339();
@@ -512,6 +610,7 @@ impl GitHubService {
                             .map(|a| a.created_at.clone())
                             .unwrap_or_else(|| now.clone()),
                         last_used_at: Some(now.clone()),
+                        token_expires_at: token_expires_at.clone(),
                     };
 
                     GitHubAccountDao::upsert(conn, &account)?;
@@ -553,6 +652,10 @@ impl GitHubService {
 
         // Delete from OS keyring first (idempotent even if already missing)
         self.store.delete_credential(&account.credential_ref)?;
+        // v0.2.1 — refresh anahtarı da aynı ref'in sonekli hali; birlikte sil.
+        let _ = self
+            .store
+            .delete_credential(&format!("{}:refresh", account.credential_ref));
 
         // Then remove the DB record
         db.with_conn(|conn| {
@@ -640,6 +743,10 @@ impl GitHubService {
     /// Loads the DB account record and its token from the OS credential store.
     /// Shared by `list_repos` and `get_account_profile`. The token is returned
     /// only for in-process use — never serialised to the frontend.
+    ///
+    /// v0.2.1: token'ın bitişi yaklaştıysa/geçtiyse ve hesap bir refresh
+    /// anahtarıyla bağlandıysa **şeffaf biçimde yenilenir** — push/pull gibi
+    /// akışlar "AuthRequired" vermeden önce kendisi tazelemeyi dener.
     fn account_with_token(
         &self,
         db: &Database,
@@ -668,7 +775,76 @@ impl GitHubService {
                 }
             })?;
 
+        // v0.2.1 — süre dolmak üzereyse (2 dk tampon) yenilemeyi dene.
+        if Self::token_expiring_soon(account.token_expires_at.as_deref()) {
+            if let Some(fresh) = self.try_refresh_token(db, &account)? {
+                return Ok((account, fresh));
+            }
+            // refresh anahtarı yok: eski token'la devam (belki hâlâ geçerlidir;
+            // GitHub App'i süre ayarı kapatılmış olabilir).
+        }
+
         Ok((account, token))
+    }
+
+    /// Bitiş zamanı okunabiliyorsa ve şimdi + 120 sn bu anı geçtiyse true.
+    fn token_expiring_soon(expires_at: Option<&str>) -> bool {
+        let Some(raw) = expires_at else {
+            return false;
+        };
+        match chrono::DateTime::parse_from_rfc3339(raw) {
+            Ok(at) => Utc::now() + chrono::Duration::seconds(120) >= at.with_timezone(&Utc),
+            Err(_) => false, // bozuk değer: eski token'la devam et
+        }
+    }
+
+    /// Refresh anahtarı varsa yeni erişim anahtarı ister ve kaydeder.
+    /// - `Ok(Some(token))` — yenilendi (keyring + DB bitiş güncellendi).
+    /// - `Ok(None)` — refresh anahtarı yok, denenmedi.
+    /// - `Err` — refresh denendi ama reddedildi; hesap `auth_expired` işaretlenir
+    ///   ve kullanıcı dürüstçe yeniden bağlanmaya yönlendirilir.
+    fn try_refresh_token(
+        &self,
+        db: &Database,
+        account: &crate::models::GitHubAccount,
+    ) -> Result<Option<String>, CommandError> {
+        let refresh_ref = format!("{}:refresh", account.credential_ref);
+        let Ok(refresh_token) = self.store.get_credential(&refresh_ref) else {
+            return Ok(None);
+        };
+
+        match self
+            .client
+            .refresh_access_token(&github_client_id(), &refresh_token)
+            .and_then(|r| r.into_token())
+        {
+            Ok((access_token, expires_in, new_refresh)) => {
+                self.store
+                    .set_credential(&account.credential_ref, &access_token)?;
+                if let Some(rt) = new_refresh.as_deref() {
+                    self.store.set_credential(&refresh_ref, rt)?;
+                }
+                let new_expiry =
+                    expires_in.map(|s| (Utc::now() + Duration::from_secs(s)).to_rfc3339());
+                db.with_conn(|conn| {
+                    GitHubAccountDao::set_token_expires_at(
+                        conn,
+                        &account.id,
+                        new_expiry.as_deref(),
+                    )?;
+                    GitHubAccountDao::set_status(conn, &account.id, GitHubConnectionStatus::Connected)
+                })?;
+                Ok(Some(access_token))
+            }
+            Err(e) => {
+                // Reddedilen refresh = yeniden bağlanma şart. Durumu işaretleyip
+                // hatayı olduğu gibi üst katmana ilet.
+                let _ = db.with_conn(|conn| {
+                    GitHubAccountDao::set_status(conn, &account.id, GitHubConnectionStatus::AuthExpired)
+                });
+                Err(e)
+            }
+        }
     }
 
     pub fn list_repos(
