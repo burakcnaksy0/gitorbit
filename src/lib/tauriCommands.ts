@@ -30,6 +30,7 @@ import type {
   GitIdentity,
   IgnoredFile,
   StashEntry,
+  RepoSyncOutcome,
   GitStatus,
   HistoryOutput,
   PollResult,
@@ -293,6 +294,30 @@ export async function repositoryAmendMessage(
   message: string
 ): Promise<CommitResult> {
   return tauriCall<CommitResult>("repository_amend_message", { repoId, message });
+}
+
+/** Çakışmalı dosyayı seçilen tarafla çözer ve stage'ler (v0.2, madde 7). */
+export async function repositoryResolveConflict(
+  repoId: string,
+  path: string,
+  side: "ours" | "theirs"
+): Promise<GitStatus> {
+  return tauriCall<GitStatus>("repository_resolve_conflict", { repoId, path, side });
+}
+
+/** Tüm depoları sırayla çeker (v0.2, madde 8). Depo başına sonuç listesi döner. */
+export async function syncPullAll(): Promise<RepoSyncOutcome[]> {
+  return tauriCall<RepoSyncOutcome[]>("sync_pull_all", {});
+}
+
+/** Tüm depoları sırayla iter (v0.2, madde 8). */
+export async function syncPushAll(): Promise<RepoSyncOutcome[]> {
+  return tauriCall<RepoSyncOutcome[]>("sync_push_all", {});
+}
+
+/** Devam eden toplu senkron turunu bir sonraki depoda durdurur. */
+export async function syncCancelAll(): Promise<boolean> {
+  return tauriCall<boolean>("sync_cancel_all", {});
 }
 
 /** Untracked bir öğeyi yoksayma dosyasına ekler (v0.2). */

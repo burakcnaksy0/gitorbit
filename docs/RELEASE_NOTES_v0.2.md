@@ -120,5 +120,37 @@ her batch'in kullanıcıya dönük notlarını tutar.
 
 ---
 
-*Sıradaki batch'ler: çakışma paneli + tümünü senkronize (Batch 5), sabitleme
-+ ilk çalışma (Batch 6).*
+## Batch 5 — İleri kullanım ✅
+
+### Çakışma yardımcı paneli
+- Merge/rebase çakışmasında Değişiklikler sekmesinin üstünde sabit bant:
+  "N dosyada çakışma var" + **X/Y çözüldü** ilerleme sayacı.
+- Dosya başına dört eylem: **Dosyayı Aç** (varsayılan editörde),
+  **← Bizim** / **Onların →** (tarafı al + stage), **Çözüldü işaretle**
+  (editörde elle çözdüysen stage).
+- Tümü çözülünce **Devam Et** (merge/rebase'i bitirir) / **İptal Et**
+  (iki adımlı onay — yıkıcı olduğundan "Emin misin?" ile teyit edilir).
+- Güvenlik: taraf seçimi yalnızca devam eden işlem varsa ve dosya
+  gerçekten çakışmalı listesindeyse çalışır; geçersiz/mutlak/`..` yollar
+  reddedilir. Karma içerik çözümü bilinçli olarak editöre devredilir.
+
+### Tümünü eşitle (çoklu depo)
+- Durum çubuğunda **Tümünü İçe** / **Tümünü Dışa** butonları: tüm depolar
+  sırayla çekilir/gönderilir, tek tek terminal açmaya gerek kalmaz.
+- İlerleme modalı: çalışma sırasında **Durdur** (içinde bulunulan depo
+  bittikten sonra sonraki depoda durur), bitince depo depo ✓ tamam /
+  ⏭ atlandı (nedeniyle: origin yok, upstream yok, klasör yok, başka işlem
+  sürüyor) / ✗ hata (mesajıyla) listesi + özet toast.
+- Push turu, tekil push ile aynı hesap-duyarlı kimlik/token mantığını
+  kullanır; kilitli depo beklemeden atlanır — tur hiçbir depoda takılmaz.
+
+### Testler
+- Core: çakışma üreten iki dallık gerçek repoyla tam akış (ours/theirs +
+  continue), yanlış durum/yol reddi, girdi doğrulama (3 entegrasyon testi);
+  senkron planlaması saf fonksiyon birim testleri (3).
+- Frontend: çakışma bandı durum makinesi (6) + senkron modalı (4).
+  Toplam suite 104 yeşil.
+
+---
+
+*Sıradaki batch: sabitleme + ilk çalışma (Batch 6).*

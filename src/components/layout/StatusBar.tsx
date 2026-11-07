@@ -5,6 +5,7 @@ import {
   ArrowUpFromLine,
   CheckCircle2,
   GitBranch,
+  Layers,
   RefreshCw,
   ShieldCheck,
   Terminal,
@@ -20,6 +21,10 @@ interface StatusBarProps {
   isSyncing?: boolean;
   isPulling?: boolean;
   isPushing?: boolean;
+  /** v0.2 — çoklu depo senkronu (madde 8). */
+  onSyncAllPull?: () => void;
+  onSyncAllPush?: () => void;
+  syncAllRunning?: boolean;
   environment?: GitEnvironment | null;
   appVersion?: string | null;
 }
@@ -66,6 +71,9 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   isSyncing = false,
   isPulling = false,
   isPushing = false,
+  onSyncAllPull,
+  onSyncAllPush,
+  syncAllRunning = false,
   environment = null,
   appVersion = null,
 }) => {
@@ -175,6 +183,40 @@ export const StatusBar: React.FC<StatusBarProps> = ({
               </span>
             )}
 
+            {(onSyncAllPull || onSyncAllPush) && (
+              <>
+                <span className="text-slate-700">|</span>
+                <button
+                  id="statusbar-sync-all-pull"
+                  type="button"
+                  onClick={onSyncAllPull}
+                  disabled={syncAllRunning}
+                  className="flex items-center gap-1 text-slate-400 hover:text-emerald-300 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 rounded px-1 disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="Tüm depoları sırayla içe aktar (Pull All)"
+                  aria-label="Tümünü içe aktar"
+                >
+                  <Layers
+                    className={`w-3 h-3 text-slate-500 ${syncAllRunning ? "animate-pulse text-sky-400" : ""}`}
+                  />
+                  <span className="hidden md:inline">Tümünü İçe</span>
+                </button>
+                <button
+                  id="statusbar-sync-all-push"
+                  type="button"
+                  onClick={onSyncAllPush}
+                  disabled={syncAllRunning}
+                  className="flex items-center gap-1 text-slate-400 hover:text-sky-300 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 rounded px-1 disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="Tüm depoları sırayla dışa aktar (Push All)"
+                  aria-label="Tümünü dışa aktar"
+                >
+                  <Layers
+                    className={`w-3 h-3 text-slate-500 ${syncAllRunning ? "animate-pulse text-sky-400" : ""}`}
+                  />
+                  <span className="hidden md:inline">Tümünü Dışa</span>
+                </button>
+              </>
+            )}
+
             <span className="text-slate-600 hidden md:inline">|</span>
 
             <div className="hidden md:flex items-center gap-2 text-slate-400">
@@ -192,7 +234,23 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             </div>
           </>
         ) : (
-          <span className="text-slate-500">Çalışma alanı seçilmedi</span>
+          <>
+            <span className="text-slate-500">Çalışma alanı seçilmedi</span>
+            {(onSyncAllPull || onSyncAllPush) && (
+              <button
+                id="statusbar-sync-all-pull"
+                type="button"
+                onClick={onSyncAllPull}
+                disabled={syncAllRunning}
+                className="flex items-center gap-1 text-slate-400 hover:text-emerald-300 transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400 rounded px-1 disabled:opacity-60 disabled:cursor-not-allowed"
+                title="Tüm depoları sırayla içe aktar (Pull All)"
+                aria-label="Tümünü içe aktar"
+              >
+                <Layers className="w-3 h-3 text-slate-500" />
+                <span className="hidden md:inline">Tümünü İçe</span>
+              </button>
+            )}
+          </>
         )}
       </div>
 

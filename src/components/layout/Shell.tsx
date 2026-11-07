@@ -4,6 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { ActionNoticeModal } from "../common/ActionNoticeModal";
 import { CommandPalette, type PaletteItem } from "../common/CommandPalette";
+import { SyncAllModal, summarizeSync } from "../common/SyncAllModal";
 import { WelcomeView } from "../../features/welcome/WelcomeView";
 import { RepositoryListView } from "../../features/repositories/RepositoryListView";
 import {
@@ -139,6 +140,8 @@ export const Shell: React.FC = () => {
   // v0.2 — Komut paleti + sürükle-bırak state
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteBranches, setPaletteBranches] = useState<BranchInfo[]>([]);
+  // v0.2 — "Tümünü eşitle" modalı (madde 8)
+  const [syncAllKind, setSyncAllKind] = useState<"pull" | "push" | null>(null);
 
   const showNotice = useCallback(
     (
@@ -819,7 +822,27 @@ export const Shell: React.FC = () => {
         onSyncClick={() => void handleSync()}
         onPullClick={() => void handlePull()}
         onPushClick={() => void handlePush()}
+        onSyncAllPull={() => setSyncAllKind("pull")}
+        onSyncAllPush={() => setSyncAllKind("push")}
+        syncAllRunning={syncAllKind !== null}
       />
+
+      {syncAllKind && (
+        <SyncAllModal
+          key={syncAllKind}
+          kind={syncAllKind}
+          onClose={() => setSyncAllKind(null)}
+          onFinished={(outcomes) => {
+            void loadRepositories();
+            if (outcomes.length > 0) {
+              notify.info(
+                syncAllKind === "pull" ? "İçe aktarma tamamlandı" : "Dışa aktarma tamamlandı",
+                summarizeSync(outcomes)
+              );
+            }
+          }}
+        />
+      )}
 
       {notGitPath && (
         <NotGitChoiceModal

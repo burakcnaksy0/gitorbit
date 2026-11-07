@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   Archive,
   CheckCircle,
+  CornerDownLeft,
   EyeOff,
   FileDiff,
   FileMinus,
@@ -38,13 +39,16 @@ import type {
 } from "../../types/ipc";
 import type { RepositorySummary } from "../../types/navigation";
 import {
+  repositoryAbortOperation,
   repositoryCommit,
+  repositoryContinueOperation,
   repositoryDiscardChanges,
   repositoryGetDiff,
   repositoryGetIdentity,
   repositoryGetStatus,
   repositoryGetStatusHash,
   repositoryIgnoreFile,
+  repositoryResolveConflict,
   repositorySetIdentity,
   repositoryStashApply,
   repositoryStashDrop,
@@ -484,6 +488,11 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
   const [isStashing, setIsStashing] = useState(false);
   const [stashBusyId, setStashBusyId] = useState<string | null>(null);
   const [stashDropTarget, setStashDropTarget] = useState<StashEntry | null>(null);
+
+  // v0.2 — Çakışma yardımcı paneli (madde 7)
+  const [conflictBusy, setConflictBusy] = useState<string | null>(null);
+  const [abortArmed, setAbortArmed] = useState(false);
+  const conflictTotalRef = useRef(0);
 
   // -------------------------------------------------------------------------
   // Toplu Stage / Unstage
@@ -939,6 +948,123 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
   }, [notify, repoId, stashDropTarget]);
 
   // -------------------------------------------------------------------------
+  // v0.2 — Çakışma paneli (madde 7): taraf seç, aç, işaretle, devam/iptal
+  // -------------------------------------------------------------------------
+
+  const conflictedFiles = status?.conflicted_files ?? [];
+  const operationState = status?.operation_state ?? "normal";
+  const inConflictFlow = operationState !== "normal" || conflictedFiles.length > 0;
+
+  // Çözülen sayacı: işlem boyunca görülen en yüksek çakışma sayısı toplamdır.
+  if (inConflictFlow && conflictedFiles.length > conflictTotalRef.current) {
+    conflictTotalRef.current = conflictedFiles.length;
+  }
+  if (!inConflictFlow && conflictTotalRef.current !== 0) {
+    conflictTotalRef.current = 0;
+    setAbortArmed(false);
+  }
+
+  const applyConflictStatus = useCallback(
+    (newStatus: GitStatus) => {
+      setStatus(newStatus);
+      onStatusChanged?.(newStatus);
+    },
+    [onStatusChanged]
+  );
+
+  const handleResolveSide = useCallback(
+    async (path: string, side: "ours" | "theirs") => {
+      if (!repoId) return;
+      setConflictBusy(path);
+      setActionError(null);
+      try {
+        applyConflictStatus(await repositoryResolveConflict(repoId, path, side));
+        notify.success(
+          "Çakışma çözüldü",
+          `${path} · ${side === "ours" ? "bizim taraf" : "onların tarafı"} seçildi`
+        );
+      } catch (err) {
+        const e = err as AppError;
+        setActionError(e.message ?? "Çakışma çözülemedi.");
+      } finally {
+        setConflictBusy(null);
+      }
+    },
+    [applyConflictStatus, notify, repoId]
+  );
+
+  /** Harici çözülmüş (editörde düzeltilmiş) dosyayı stage'ler. */
+  const handleMarkResolved = useCallback(
+    async (path: string) => {
+      if (!repoId) return;
+      setConflictBusy(path);
+      setActionError(null);
+      try {
+        applyConflictStatus(await repositoryStageFiles(repoId, [path]));
+        notify.success("Çözüldü olarak işaretlendi", path);
+      } catch (err) {
+        const e = err as AppError;
+        setActionError(e.message ?? "Dosya stage edilemedi.");
+      } finally {
+        setConflictBusy(null);
+      }
+    },
+    [applyConflictStatus, notify, repoId]
+  );
+
+  /** Dosyayı sistemdeki varsayılan editörde açar (opener köprüsü yoksa sessiz). */
+  const handleOpenConflictFile = useCallback(
+    async (path: string) => {
+      if (!status) return;
+      const fullPath = `${status.repository_path.replace(/\/+$/, "")}/${path}`;
+      try {
+        const { openPath } = await import("@tauri-apps/plugin-opener");
+        await openPath(fullPath);
+      } catch {
+        setActionError("Dosya editörde açılamadı — konumu elle açabilirsiniz:");
+      }
+    },
+    [status]
+  );
+
+  const handleConflictContinue = useCallback(async () => {
+    if (!repoId) return;
+    setConflictBusy("__flow__");
+    setActionError(null);
+    try {
+      const newStatus = await repositoryContinueOperation(repoId);
+      applyConflictStatus(newStatus);
+      if (newStatus.conflicted_files.length > 0) {
+        setActionError("Çözümlenmemiş çakışmalar hâlâ var.");
+      } else {
+        notify.success("İşlem tamamlandı", "Devam eden Git işlemi bitirildi");
+      }
+    } catch (err) {
+      const e = err as AppError;
+      setActionError(e.message ?? "İşlem sürdürülemedi.");
+      void loadStatus();
+    } finally {
+      setConflictBusy(null);
+    }
+  }, [applyConflictStatus, loadStatus, notify, repoId]);
+
+  const handleConflictAbort = useCallback(async () => {
+    if (!repoId) return;
+    setConflictBusy("__flow__");
+    setActionError(null);
+    try {
+      applyConflictStatus(await repositoryAbortOperation(repoId));
+      notify.info("İşlem iptal edildi", "Depo işlem öncesi durumuna döndü");
+    } catch (err) {
+      const e = err as AppError;
+      setActionError(e.message ?? "İşlem iptal edilemedi.");
+    } finally {
+      setConflictBusy(null);
+      setAbortArmed(false);
+    }
+  }, [applyConflictStatus, notify, repoId]);
+
+  // -------------------------------------------------------------------------
   // Render helpers
   // -------------------------------------------------------------------------
 
@@ -1049,6 +1175,131 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
               )}
             </div>
           </div>
+
+          {/* v0.2 — Çakışma yardımcı bandı (madde 7) */}
+          {inConflictFlow && (
+            <div
+              className="mx-3 mt-2 rounded-lg border border-rose-800/60 bg-rose-950/30 p-2.5 space-y-2"
+              role="alert"
+              aria-label="Çakışma paneli"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span className="text-xs font-bold text-rose-200 truncate">
+                    {conflictedFiles.length > 0
+                      ? `${conflictedFiles.length} dosyada çakışma var`
+                      : "Tüm çakışmalar çözüldü"}
+                  </span>
+                </div>
+                {conflictTotalRef.current > 0 && (
+                  <span className="text-[10px] font-mono text-rose-300/80 shrink-0">
+                    {conflictTotalRef.current - conflictedFiles.length}/
+                    {conflictTotalRef.current} çözüldü
+                  </span>
+                )}
+              </div>
+
+              {conflictedFiles.length > 0 ? (
+                <ul className="space-y-1.5">
+                  {conflictedFiles.map((path) => (
+                    <li
+                      key={path}
+                      className="rounded bg-slate-950/60 border border-slate-800 px-2 py-1.5"
+                    >
+                      <p className="text-[11px] font-mono text-slate-200 truncate" title={path}>
+                        {path}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-1 mt-1">
+                        {conflictBusy === path ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void handleOpenConflictFile(path)}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors cursor-pointer"
+                              title="Dosyayı varsayılan editörde aç (karma çözüm için)"
+                            >
+                              Dosyayı Aç
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleResolveSide(path, "ours")}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-sky-600/30 text-sky-300 hover:bg-sky-600/50 transition-colors cursor-pointer"
+                              title="Çakışan içeriğin HEAD (mevcut dal) tarafını al ve stage'le"
+                              aria-label={`${path} için bizim tarafı seç`}
+                            >
+                              ← Bizim
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleResolveSide(path, "theirs")}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-violet-600/30 text-violet-300 hover:bg-violet-600/50 transition-colors cursor-pointer"
+                              title="Çakışan içeriğin gelen tarafını al ve stage'le"
+                              aria-label={`${path} için onların tarafını seç`}
+                            >
+                              Onların →
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleMarkResolved(path)}
+                              className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600/30 text-emerald-300 hover:bg-emerald-600/50 transition-colors cursor-pointer"
+                              title="Editörde elle çözdüysen stage'le"
+                            >
+                              <CornerDownLeft className="w-2.5 h-2.5 inline mr-0.5" />
+                              Çözüldü işaretle
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-[11px] text-emerald-300/90">
+                  İşlemi tamamlayabilir veya başa dönebilirsin. İptal, bu işleme
+                  kadar yapılan çözümleri geri alır.
+                </p>
+              )}
+
+              {conflictedFiles.length === 0 && (
+                <div className="flex gap-2 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => void handleConflictContinue()}
+                    disabled={conflictBusy === "__flow__"}
+                    className="flex-1 py-1.5 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    {conflictBusy === "__flow__" ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle className="w-3.5 h-3.5" />
+                    )}
+                    Devam Et
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!abortArmed) {
+                        setAbortArmed(true);
+                      } else {
+                        void handleConflictAbort();
+                      }
+                    }}
+                    disabled={conflictBusy === "__flow__"}
+                    className={`flex-1 py-1.5 rounded text-xs font-semibold transition-colors disabled:opacity-50 ${
+                      abortArmed
+                        ? "bg-rose-600 hover:bg-rose-500 text-white"
+                        : "bg-slate-800 hover:bg-slate-700 text-slate-200"
+                    }`}
+                  >
+                    {abortArmed ? "Emin misin? Tekrar bas" : "İptal Et"}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Stash paneli (v0.2) */}
           {stashPanelOpen && (

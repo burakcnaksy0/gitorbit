@@ -292,6 +292,17 @@ export interface StashEntry {
   date: string;
 }
 
+/** v0.2 — "Tümünü eşitle" turu için tek depo sonucu. */
+export type SyncOutcomeStatus = "done" | "skipped" | "error";
+
+export interface RepoSyncOutcome {
+  repo_id: string;
+  name: string;
+  status: SyncOutcomeStatus;
+  detail: string | null;
+  summary: string | null;
+}
+
 export interface CommitResult {
   commit_sha: string;
   status: GitStatus;

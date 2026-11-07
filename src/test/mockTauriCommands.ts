@@ -49,6 +49,11 @@ export const repositoryGetOperationState = vi.fn();
 export const repositoryMergeBranch = vi.fn();
 export const repositoryContinueOperation = vi.fn();
 export const repositoryAbortOperation = vi.fn();
+export const repositoryResolveConflict = vi.fn();
+export const repositoryAmendMessage = vi.fn();
+export const syncPullAll = vi.fn();
+export const syncPushAll = vi.fn();
+export const syncCancelAll = vi.fn();
 
 export const githubBeginLogin = vi.fn();
 export const githubPollLogin = vi.fn();
