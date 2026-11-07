@@ -11,6 +11,10 @@
 use gitorbit_core::GitHubService;
 use gitorbit_core::db::Database;
 use gitorbit_core::services::{RepositoryService, SettingsService};
+use gitorbit_core::sync::{
+    RepoSyncOutcome, SyncOutcomeStatus, SyncPlanEntry, SyncRepoInput, SyncSkipReason,
+    plan_sync_list,
+};
 use gitorbit_core::{
     AppInfo, AppSettings, AppSettingsUpdate, BranchComparison, BranchInfo, CloneResult,
     CommandError, CommitDetails, CommitResult, DeviceFlowSession, DiffOutput, GitCommitManager,
@@ -23,7 +27,8 @@ use gitorbit_core::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use tauri::{AppHandle, State};
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
 // ---------------------------------------------------------------------------
@@ -43,6 +48,8 @@ pub struct AppState {
     pub pending_device_flow: Mutex<HashMap<String, PendingDeviceFlow>>,
     /// Per-repository mutation locks (REPOSITORY_BUSY on contention).
     pub locks: RepoLockRegistry,
+    /// v0.2: "Tümünü eşitle" turunun iptal bayrağı (frontend durdur butonu).
+    pub sync_cancel: AtomicBool,
 }
 
 impl AppState {
@@ -53,6 +60,7 @@ impl AppState {
             github: GitHubService::new_real(),
             pending_device_flow: Mutex::new(HashMap::new()),
             locks: RepoLockRegistry::new(),
+            sync_cancel: AtomicBool::new(false),
         })
     }
 }
@@ -940,6 +948,208 @@ fn repository_abort_operation(state: State<AppState>, repo_id: String) -> CmdRes
     })
 }
 
+/// v0.2 — çakışmalı bir dosyayı seçilen tarafla çözer ("ours" | "theirs")
+/// ve stage'ler. Yalnızca devam eden bir işlem varsa çalışır.
+#[tauri::command]
+fn repository_resolve_conflict(
+    state: State<AppState>,
+    repo_id: String,
+    path: String,
+    side: String,
+) -> CmdResult<GitStatus> {
+    let ours = match side.as_str() {
+        "ours" => true,
+        "theirs" => false,
+        _ => {
+            return Err(AppError::simple(
+                "VALIDATION_ERROR",
+                "Geçersiz taraf: ours veya theirs olmalı.",
+                true,
+            ));
+        }
+    };
+    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+    with_db(&state, |db| {
+        RepositoryService::resolve_conflict(db, &repo_id, &path, ours)
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Faz 8 / v0.2 madde 8 — çoklu depo senkronizasyonu (tümünü pull/push)
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SyncKind {
+    Pull,
+    Push,
+}
+
+/// Sıralı senkron turu: planlama saf fonksiyonda (`plan_sync_list`), uygulama
+/// burada. Depolar arasında iptal bayrağı kontrol edilir; kilitli depo
+/// beklemez, atlanır. Hata bir depoyu durdurmaz — sonuç listesi döner.
+fn run_sync_round(state: &State<AppState>, kind: SyncKind) -> Vec<RepoSyncOutcome> {
+    state.sync_cancel.store(false, Ordering::Relaxed);
+
+    // 1) Girdi topla (kayıtlı depolar + hızlı ön kontroller).
+    let inputs: Vec<SyncRepoInput> = with_db(state, |db| {
+        let repos = RepositoryService::list_repositories(db)?;
+        let mut inputs = Vec::with_capacity(repos.len());
+        for repo in repos {
+            let mut input = SyncRepoInput {
+                repo_id: repo.id.clone(),
+                name: repo.display_name.clone(),
+                missing: repo.missing,
+                locked: false,
+                has_origin: false,
+                upstream: None,
+                status_error: false,
+            };
+            if !repo.missing {
+                let path = std::path::Path::new(&repo.canonical_path);
+                match GitRemoteManager::list_remotes(path) {
+                    Ok(remotes) => {
+                        input.has_origin = remotes.iter().any(|r| r.name == "origin")
+                    }
+                    Err(_) => input.status_error = true,
+                }
+                match RepositoryService::get_repository_status(db, &repo.id) {
+                    Ok(status) => input.upstream = status.upstream,
+                    Err(_) => input.status_error = true,
+                }
+            }
+            inputs.push(input);
+        }
+        Ok(inputs)
+    })
+    .unwrap_or_default();
+
+    // 2) Planla ve sırayla uygula.
+    let mut outcomes = Vec::new();
+    let cancelled = || state.sync_cancel.load(Ordering::Relaxed);
+
+    for entry in plan_sync_list(inputs) {
+        let (repo_id, name) = match entry {
+            SyncPlanEntry::Skip {
+                repo_id,
+                name,
+                reason,
+            } => {
+                outcomes.push(RepoSyncOutcome {
+                    repo_id,
+                    name,
+                    status: SyncOutcomeStatus::Skipped,
+                    detail: Some(reason.label().to_string()),
+                    summary: None,
+                });
+                continue;
+            }
+            SyncPlanEntry::Run { repo_id, name } => (repo_id, name),
+        };
+
+        if cancelled() {
+            outcomes.push(RepoSyncOutcome {
+                repo_id,
+                name,
+                status: SyncOutcomeStatus::Skipped,
+                detail: Some(SyncSkipReason::Cancelled.label().to_string()),
+                summary: None,
+            });
+            continue;
+        }
+
+        // Kilit: kullanıcı bu depoda işlem yapıyorsa beklemeden atla.
+        let _guard = match state.locks.try_acquire(&repo_id) {
+            Ok(guard) => guard,
+            Err(_) => {
+                outcomes.push(RepoSyncOutcome {
+                    repo_id,
+                    name,
+                    status: SyncOutcomeStatus::Skipped,
+                    detail: Some(SyncSkipReason::Locked.label().to_string()),
+                    summary: None,
+                });
+                continue;
+            }
+        };
+
+        let result = match kind {
+            SyncKind::Pull => with_db(state, |db| {
+                RepositoryService::pull(db, &repo_id, None, None, None)
+            }),
+            SyncKind::Push => with_db(state, |db| {
+                // repository_push ile aynı hesap-duyarlı kimlik/token mantığı.
+                let owner_identity = origin_owner_identity(state, db, &repo_id);
+                let token = match &owner_identity {
+                    Some((account, true)) => state.github.access_token(db, &account.id).ok(),
+                    _ => None,
+                };
+                if let Some((account, _)) = &owner_identity {
+                    let (name, email) = GitHubService::git_identity_for(account);
+                    let _ = apply_repo_identity(db, &repo_id, &name, &email, true, false);
+                }
+                RepositoryService::push(db, &repo_id, None, None, false, false, token.as_deref())
+            }),
+        };
+
+        outcomes.push(match result {
+            Ok(status) => RepoSyncOutcome {
+                repo_id,
+                name,
+                status: SyncOutcomeStatus::Done,
+                detail: None,
+                summary: match kind {
+                    SyncKind::Pull => Some("güncel".to_string()),
+                    SyncKind::Push => Some(if status.ahead > 0 {
+                        format!("{} commit hâlâ ileride", status.ahead)
+                    } else {
+                        "gönderildi".to_string()
+                    }),
+                },
+            },
+            Err(err) => RepoSyncOutcome {
+                repo_id,
+                name,
+                status: SyncOutcomeStatus::Error,
+                detail: Some(err.message),
+                summary: None,
+            },
+        });
+    }
+
+    outcomes
+}
+
+/// Tüm depoları sırayla içe aktarır (pull). İlerleme frontend'deki modalda;
+/// `sync_cancel_all` ile tur durdurulabilir.
+#[tauri::command]
+async fn sync_pull_all(app: AppHandle) -> CmdResult<Vec<RepoSyncOutcome>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        run_sync_round(&state, SyncKind::Pull)
+    })
+    .await
+    .map_err(|_| AppError::simple("INTERNAL_ERROR", "Senkron turu başlatılamadı.", false))
+}
+
+/// Tüm depoları sırayla dışa aktarır (push). Push edilecek commit'i olmayan
+/// depo başarısız sayılmaz (yerel commit yoksa push uçta hızlı döner).
+#[tauri::command]
+async fn sync_push_all(app: AppHandle) -> CmdResult<Vec<RepoSyncOutcome>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        run_sync_round(&state, SyncKind::Push)
+    })
+    .await
+    .map_err(|_| AppError::simple("INTERNAL_ERROR", "Senkron turu başlatılamadı.", false))
+}
+
+/// Devam eden "tümünü eşitle" turunu bir sonraki depoda durdurur.
+#[tauri::command]
+fn sync_cancel_all(state: State<AppState>) -> bool {
+    state.sync_cancel.store(true, Ordering::Relaxed);
+    true
+}
+
 /// Reads full details (files and line stats) for a commit.
 #[tauri::command]
 fn repository_get_commit_details(
@@ -1042,6 +1252,10 @@ pub fn run() {
             repository_merge_branch,
             repository_continue_operation,
             repository_abort_operation,
+            repository_resolve_conflict,
+            sync_pull_all,
+            sync_push_all,
+            sync_cancel_all,
             repository_list_remotes,
             repository_ignore_file,
             repository_stash_push,

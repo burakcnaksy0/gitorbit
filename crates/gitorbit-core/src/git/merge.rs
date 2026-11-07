@@ -199,4 +199,93 @@ impl GitMergeManager {
 
         GitStatusParser::get_status(repo_dir)
     }
+
+    /// Çakışan tek bir dosyayı taraf seçerek çözer:
+    /// `git checkout --ours|--theirs -- <path>` + `git add -- <path>`.
+    ///
+    /// Güvenlik kuralları:
+    /// - Yalnızca devam eden bir işlem VARSA (`operation_state != normal`) çalışır —
+    ///   normal durumda sessiz stage/dosya yazımı yapılmaz.
+    /// - Yalnızca status'un çakışmalı bildirdiği yollar kabul edilir.
+    /// - Yol doğrulaması: boş, mutlak, `..` içeren veya `-` ile başlayan girdiler
+    ///   reddedilir (bayrak enjeksiyonu koruması).
+    /// - "Karma içerik" çözümü bilinçli olarak burada YOK — o iş editöre devredilir
+    ///   (Dosyayı Aç + Çözüldü işaretle akışı).
+    pub fn resolve_with_side(
+        repo_dir: &Path,
+        path: &str,
+        ours: bool,
+    ) -> Result<GitStatus, CommandError> {
+        let canonical_repo = repo_dir
+            .canonicalize()
+            .map_err(|e| CommandError::io_error(format!("Geçersiz depo dizini: {}", e)))?;
+        let path = path.trim();
+
+        if path.is_empty()
+            || path.starts_with('-')
+            || path.starts_with('/')
+            || path.contains("..")
+        {
+            return Err(CommandError::new(
+                "VALIDATION_ERROR",
+                "Geçersiz dosya yolu.",
+                true,
+            ));
+        }
+
+        let state = crate::git::GitOperationStateManager::detect_state(&canonical_repo);
+        if state == RepositoryOperationState::Normal {
+            return Err(CommandError::new(
+                "INVALID_STATE",
+                "Devam eden bir çakışma işlemi yok; taraf seçimi yapılamaz.",
+                true,
+            ));
+        }
+
+        let status = GitStatusParser::get_status(&canonical_repo)?;
+        if !status.conflicted_files.iter().any(|f| f == path) {
+            return Err(CommandError::new(
+                "NOT_CONFLICTED",
+                format!("{} çakışmalı dosyalar arasında değil.", path),
+                true,
+            ));
+        }
+
+        let side = if ours { "ours" } else { "theirs" };
+        let checkout = GitAdapter::execute_with_env_and_timeout(
+            &canonical_repo,
+            &["checkout", format!("--{}", side).as_str(), "--", path],
+            &[("GIT_TERMINAL_PROMPT", "0")],
+            Some(MERGE_TIMEOUT),
+        )?;
+        if !checkout.status.success() {
+            let stderr = String::from_utf8_lossy(&checkout.stderr);
+            return Err(CommandError::new(
+                "GIT_COMMAND_FAILED",
+                format!(
+                    "Dosya {} tarafıyla çözülemedi: {}",
+                    if ours { "bizim" } else { "onların" },
+                    stderr.trim()
+                ),
+                true,
+            ));
+        }
+
+        let add = GitAdapter::execute_with_env_and_timeout(
+            &canonical_repo,
+            &["add", "--", path],
+            &[("GIT_TERMINAL_PROMPT", "0")],
+            Some(MERGE_TIMEOUT),
+        )?;
+        if !add.status.success() {
+            let stderr = String::from_utf8_lossy(&add.stderr);
+            return Err(CommandError::new(
+                "GIT_COMMAND_FAILED",
+                format!("Dosya stage edilemedi: {}", stderr.trim()),
+                true,
+            ));
+        }
+
+        GitStatusParser::get_status(&canonical_repo)
+    }
 }

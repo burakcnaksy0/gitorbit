@@ -9,6 +9,7 @@ pub mod errors;
 pub mod git;
 pub mod models;
 pub mod services;
+pub mod sync;
 
 pub use credential_store::{CredentialStore, OsCredentialStore};
 pub use db::Database;

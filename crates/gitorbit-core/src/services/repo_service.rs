@@ -819,6 +819,19 @@ impl RepositoryService {
         Ok(status)
     }
 
+    /// Çakışmalı bir dosyayı seçilen tarafla çözer ve stage'ler.
+    /// Yalnızca devam eden merge/rebase varasında ve dosya gerçekten
+    /// çakışmalıysa çalışır (doğrulama GitMergeManager içinde).
+    pub fn resolve_conflict(
+        db: &Database,
+        repo_id: &str,
+        path: &str,
+        ours: bool,
+    ) -> Result<GitStatus, CommandError> {
+        let repo = Self::get_repository(db, repo_id)?;
+        GitMergeManager::resolve_with_side(Path::new(&repo.canonical_path), path, ours)
+    }
+
     /// Reads full details for a commit.
     pub fn get_commit_details(
         db: &Database,

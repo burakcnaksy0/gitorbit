@@ -2,6 +2,7 @@
 
 use gitorbit_core::db::Database;
 use gitorbit_core::services::RepositoryService;
+use gitorbit_core::RepositoryOperationState;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -20,6 +21,17 @@ fn run_cmd(dir: &Path, args: &[&str]) -> String {
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+/// Hata durumunu saydırmayan varyant (çakışma üreten merge gibi beklenmedik
+/// çıkış kodları üreten komutlar için).
+#[allow(dead_code)]
+fn run_cmd_allow_fail(dir: &Path, args: &[&str]) {
+    let _ = Command::new("git")
+        .current_dir(dir)
+        .args(args)
+        .output()
+        .expect("git komutu çalıştırılamadı");
 }
 
 fn init_repo(dir: &Path) {
@@ -359,5 +371,117 @@ fn history_returns_graph_rows_and_ref_decorations() {
     assert!(
         head_refs.iter().any(|r| r == "tag:v1.0"),
         "tag dekorasyonu yok: {head_refs:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Çakışma çözimi (v0.2 madde 7)
+// ---------------------------------------------------------------------------
+
+/// main ve feature dallari AYNI satiri farkli degistirir → merge cakismasi.
+fn setup_conflict(repo: &Path) {
+    init_repo(repo);
+    fs::write(repo.join("conflict.txt"), "satir1\n").unwrap();
+    run_cmd(repo, &["add", "conflict.txt"]);
+    run_cmd(repo, &["commit", "-m", "base dosya"]);
+
+    run_cmd(repo, &["checkout", "-b", "feature"]);
+    fs::write(repo.join("conflict.txt"), "onlarin degisikligi\n").unwrap();
+    run_cmd(repo, &["commit", "-am", "feature degisti"]);
+
+    run_cmd(repo, &["checkout", "main"]);
+    fs::write(repo.join("conflict.txt"), "bizim degisikligimiz\n").unwrap();
+    run_cmd(repo, &["commit", "-am", "main degisti"]);
+
+    // Merge cakisma uretmeli — hata bekleniyor, state merge_in_progress kalmali.
+    let _ = run_cmd_allow_fail(repo, &["merge", "--no-edit", "feature"]);
+}
+
+#[test]
+fn resolve_conflict_rejects_wrong_state_and_paths() {
+    let temp = tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    setup_conflict(&repo);
+    let db = Database::in_memory().unwrap();
+    let id = register(&db, &repo);
+
+    // Cakisma ortasinda cakismali olmayan yol reddedilir.
+    let err = gitorbit_core::services::RepositoryService::resolve_conflict(
+        &db, &id, "README.md", true,
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "NOT_CONFLICTED");
+
+    // Girdi dogrulamasi: bayrak enjeksiyonu / mutlak yol / bos.
+    for bad in ["", "-ours", "/etc/passwd", "../gizli"] {
+        assert!(
+            gitorbit_core::services::RepositoryService::resolve_conflict(&db, &id, bad, true)
+                .is_err(),
+            "reddedilmeliydi: {bad:?}"
+        );
+    }
+}
+
+#[test]
+fn resolve_conflict_full_flow_ours_theirs_continue() {
+    let temp = tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    setup_conflict(&repo);
+    let db = Database::in_memory().unwrap();
+    let id = register(&db, &repo);
+
+    let status = RepositoryService::get_repository_status(&db, &id).unwrap();
+    assert_eq!(status.operation_state, RepositoryOperationState::MergeInProgress);
+    assert!(status.conflicted_files.contains(&"conflict.txt".to_string()));
+
+    // "Bizim" taraf secilip stage'lenir.
+    let status =
+        gitorbit_core::services::RepositoryService::resolve_conflict(&db, &id, "conflict.txt", true)
+            .unwrap();
+    assert!(
+        status.conflicted_files.is_empty(),
+        "cozum sonrasi cakismali dosya kalmamali: {:?}",
+        status.conflicted_files
+    );
+    assert_eq!(
+        fs::read_to_string(repo.join("conflict.txt")).unwrap().trim(),
+        "bizim degisikligimiz"
+    );
+
+    // Merge hâlâ sürüyor — continue ile tamamlanir.
+    let status = RepositoryService::continue_operation(&db, &id).unwrap();
+    assert_eq!(status.operation_state, RepositoryOperationState::Normal);
+    assert!(
+        run_cmd(&repo, &["log", "-1", "--format=%P"])
+            .split_whitespace()
+            .count()
+            == 2,
+        "merge commit iki ebeveynli olmali"
+    );
+
+    // Normal duruma donuldugu icin artik resolve reddedilir.
+    let err = gitorbit_core::services::RepositoryService::resolve_conflict(
+        &db, &id, "conflict.txt", false,
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "INVALID_STATE");
+}
+
+#[test]
+fn resolve_conflict_theirs_side_wins() {
+    let temp = tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    setup_conflict(&repo);
+    let db = Database::in_memory().unwrap();
+    let id = register(&db, &repo);
+
+    gitorbit_core::services::RepositoryService::resolve_conflict(&db, &id, "conflict.txt", false)
+        .unwrap();
+    assert_eq!(
+        fs::read_to_string(repo.join("conflict.txt")).unwrap().trim(),
+        "onlarin degisikligi"
     );
 }
