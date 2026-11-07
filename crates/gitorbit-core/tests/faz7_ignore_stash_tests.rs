@@ -230,3 +230,77 @@ fn stash_invalid_refs_rejected() {
         assert!(RepositoryService::stash_drop(&db, &id, bad).is_err());
     }
 }
+
+// ---------------------------------------------------------------------------
+// Amend mesaj (v0.2 madde 3)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn amend_message_rejects_unborn_and_pushed_commits() {
+    let temp = tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    run_cmd(&repo, &["init", "-b", "main"]);
+    run_cmd(&repo, &["config", "user.name", "Test User"]);
+    run_cmd(&repo, &["config", "user.email", "test@example.com"]);
+    let db = Database::in_memory().unwrap();
+    let id = register(&db, &repo);
+
+    // Unborn HEAD: düzenlenecek commit yok.
+    let err = RepositoryService::amend_message(&db, &id, "bos mesaj").unwrap_err();
+    assert_eq!(err.code, "NO_COMMITS");
+
+    // Yerel commit: amend serbest.
+    fs::write(repo.join("README.md"), "# repo\n").unwrap();
+    run_cmd(&repo, &["add", "README.md"]);
+    run_cmd(&repo, &["commit", "-m", "eski mesaj"]);
+    let res = RepositoryService::amend_message(&db, &id, "  yeni mesaj  ").unwrap();
+    assert_eq!(
+        run_cmd(&repo, &["log", "-1", "--format=%s"]),
+        "yeni mesaj"
+    );
+    assert!(!res.commit_sha.is_empty());
+
+    // Push edildikten sonra reddedilmeli.
+    let origin = temp.path().join("origin.git");
+    fs::create_dir_all(&origin).unwrap();
+    run_cmd(&origin, &["init", "--bare"]);
+    run_cmd(&repo, &["remote", "add", "origin", origin.to_str().unwrap()]);
+    run_cmd(&repo, &["push", "-u", "origin", "main"]);
+    let err = RepositoryService::amend_message(&db, &id, "riskli rewrite").unwrap_err();
+    assert_eq!(err.code, "AMEND_PUSHED");
+
+    // Bos mesaj girdi olarak hep reddedilir.
+    assert!(RepositoryService::amend_message(&db, &id, "   ").is_err());
+}
+
+#[test]
+fn amend_message_never_includes_staged_content() {
+    let temp = tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    init_repo(&repo);
+    let db = Database::in_memory().unwrap();
+    let id = register(&db, &repo);
+
+    // Stage edilmis bir dosya varken mesaj amend'i icerige dokunmamali.
+    fs::write(repo.join("yeni.txt"), "içerik\n").unwrap();
+    run_cmd(&repo, &["add", "yeni.txt"]);
+    let before = run_cmd(&repo, &["rev-list", "--count", "HEAD"]);
+
+    RepositoryService::amend_message(&db, &id, "mesaj duzeltildi").unwrap();
+
+    assert_eq!(run_cmd(&repo, &["log", "-1", "--format=%s"]), "mesaj duzeltildi");
+    assert_eq!(run_cmd(&repo, &["rev-list", "--count", "HEAD"]), before);
+    let status = RepositoryService::get_repository_status(&db, &id).unwrap();
+    assert!(
+        status
+            .staged_files
+            .iter()
+            .any(|f| f.path == "yeni.txt"),
+        "staged dosya amend sonrasi yerinde kalmali"
+    );
+    // Uzak hic yokken de amend serbest (ahead mantigi upstream'siz dallarda
+    // head_on_remote kontrolune duser).
+    assert_eq!(status.upstream, None);
+}

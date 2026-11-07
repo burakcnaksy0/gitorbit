@@ -348,6 +348,20 @@ fn repository_commit(
     })
 }
 
+/// Son commit'in yalnızca mesajını yeniden yazar. Push edilmiş commit
+/// reddedilir (AMEND_PUSHED) — geçmiş sessizce değiştirilmez.
+#[tauri::command]
+fn repository_amend_message(
+    state: State<AppState>,
+    repo_id: String,
+    message: String,
+) -> CmdResult<CommitResult> {
+    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+    with_db(&state, |db| {
+        RepositoryService::amend_message(db, &repo_id, &message)
+    })
+}
+
 /// Reads commit history with pagination.
 #[tauri::command]
 fn repository_get_history(
@@ -982,6 +996,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             // Utility
@@ -1034,6 +1049,7 @@ pub fn run() {
             repository_stash_apply,
             repository_stash_pop,
             repository_stash_drop,
+            repository_amend_message,
             repository_get_operation_state,
             // Faz 6 — GitHub accounts & repositories
             github_begin_login,

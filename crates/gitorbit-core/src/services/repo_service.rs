@@ -666,6 +666,16 @@ impl RepositoryService {
         crate::git::GitStashManager::drop(Path::new(&record.canonical_path), id)
     }
 
+    /// Son commit'in yalnızca mesajını yeniden yazar (push edilmemişse).
+    pub fn amend_message(
+        db: &Database,
+        repo_id: &str,
+        new_message: &str,
+    ) -> Result<CommitResult, CommandError> {
+        let record = Self::get_repository(db, repo_id)?;
+        GitCommitManager::amend_message(Path::new(&record.canonical_path), new_message)
+    }
+
     /// Detects current operation state (Normal, MergeInProgress, RebaseInProgress, etc.).
     pub fn get_operation_state(
         db: &Database,

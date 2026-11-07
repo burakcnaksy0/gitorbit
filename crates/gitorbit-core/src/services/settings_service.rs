@@ -59,6 +59,14 @@ impl SettingsService {
             };
         }
 
+        if let Some(auto_fetch) = update.auto_fetch {
+            settings.auto_fetch = auto_fetch;
+        }
+
+        if let Some(minutes) = update.auto_fetch_minutes {
+            settings.auto_fetch_minutes = minutes.clamp(1, 120);
+        }
+
         db.with_conn(|conn| SettingsDao::save(conn, &settings))?;
         Ok(settings)
     }

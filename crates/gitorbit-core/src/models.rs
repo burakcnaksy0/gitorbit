@@ -330,7 +330,21 @@ pub struct AppSettings {
     pub diff_context_lines: u32,
     pub log_level: String,
     pub confirm_destructive: bool,
+    #[serde(default)]
     pub active_github_account_id: Option<String>,
+    /// v0.2: arka plan fetch'i (uzak değişiklik rozetleri) açık mı?
+    #[serde(default = "default_true")]
+    pub auto_fetch: bool,
+    /// v0.2: arka plan fetch aralığı (dakika, min 1).
+    #[serde(default = "default_fetch_minutes")]
+    pub auto_fetch_minutes: u32,
+}
+
+fn default_true() -> bool {
+    true
+}
+fn default_fetch_minutes() -> u32 {
+    3
 }
 
 impl Default for AppSettings {
@@ -342,6 +356,8 @@ impl Default for AppSettings {
             log_level: "info".to_string(),
             confirm_destructive: true,
             active_github_account_id: None,
+            auto_fetch: true,
+            auto_fetch_minutes: 3,
         }
     }
 }
@@ -355,6 +371,10 @@ pub struct AppSettingsUpdate {
     pub log_level: Option<String>,
     pub confirm_destructive: Option<bool>,
     pub active_github_account_id: Option<String>,
+    #[serde(default)]
+    pub auto_fetch: Option<bool>,
+    #[serde(default)]
+    pub auto_fetch_minutes: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

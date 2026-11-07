@@ -198,4 +198,142 @@ impl GitCommitManager {
             status: fresh_status,
         })
     }
+
+    /// Amend-güvenliği kararının saf hali:
+    /// - upstream varsa: son commit yalnızca `ahead > 0` ise upstream'de değildir.
+    /// - upstream yoksa: HEAD herhangi bir uzak-takip dalındaysa push edilmiştir.
+    /// Saf fonksiyon — birim testli.
+    pub fn amend_allowed(upstream: Option<&str>, ahead: u32, head_on_remote: bool) -> bool {
+        match upstream {
+            Some(_) => ahead > 0,
+            None => !head_on_remote,
+        }
+    }
+
+    /// HEAD'in herhangi bir uzak-takip dalında (origin/main vb.) bulunup
+    /// bulunmadığını `git branch -r --contains HEAD` ile sorgular.
+    fn head_on_remote_branch(repo_dir: &Path) -> Result<bool, CommandError> {
+        let output = GitAdapter::execute_with_timeout(
+            repo_dir,
+            &["branch", "--remotes", "--contains", "HEAD"],
+            COMMIT_TIMEOUT,
+        )?;
+        Ok(output.status.success()
+            && !String::from_utf8_lossy(&output.stdout).trim().is_empty())
+    }
+
+    /// Son commit'in **yalnızca mesajını** yeniden yazar (`commit --amend --only`).
+    ///
+    /// Faz 4 ilkesi korunur: geçmiş sessizce değiştirilmez.
+    /// - Yalnızca mesaj değişir; staged/unstaged içerik commit'e eklenmez
+    ///   (`--only`, staged dosyalar oldugu yerde kalır).
+    /// - Son commit upstream'e (veya herhangi bir uzak dalın tarihçesine)
+    ///   ulaşmışsa `AMEND_PUSHED` ile reddedilir.
+    /// - Unborn HEAD / detached HEAD reddedilir.
+    pub fn amend_message(
+        repo_dir: &Path,
+        new_message: &str,
+    ) -> Result<CommitResult, CommandError> {
+        let canonical_repo = repo_dir
+            .canonicalize()
+            .map_err(|e| CommandError::io_error(format!("Geçersiz depo dizini: {}", e)))?;
+
+        let message = new_message.trim();
+        if message.is_empty() {
+            return Err(CommandError::new(
+                "VALIDATION_ERROR",
+                "Commit mesajı boş olamaz.",
+                true,
+            ));
+        }
+
+        // 1. HEAD exists? (unborn HEAD has nothing to amend)
+        let head_exists = GitAdapter::execute_with_timeout(
+            &canonical_repo,
+            &["rev-parse", "--verify", "--quiet", "HEAD"],
+            COMMIT_TIMEOUT,
+        )
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+        if !head_exists {
+            return Err(CommandError::new(
+                "NO_COMMITS",
+                "Düzenlenecek son commit bulunmuyor (depo henüz boş).",
+                true,
+            ));
+        }
+
+        // 2. Detached HEAD: dalı kaydıracağı için bilincli olarak reddedilir.
+        let status = crate::git::GitStatusParser::get_status(&canonical_repo)?;
+        if status.is_detached_head || status.branch.is_none() {
+            return Err(CommandError::new(
+                "DETACHED_HEAD",
+                "Başlısız HEAD durumunda commit mesajı düzenlenemez.",
+                true,
+            ));
+        }
+
+        // 3. Push-guard: commit henüz uzakta olmali.
+        let head_on_remote = if status.upstream.is_some() {
+            false
+        } else {
+            Self::head_on_remote_branch(&canonical_repo)?
+        };
+        if !Self::amend_allowed(status.upstream.as_deref(), status.ahead, head_on_remote) {
+            return Err(CommandError::new(
+                "AMEND_PUSHED",
+                "Son commit zaten push edilmiş görünüyor; push edilmiş geçmiş bu arayüzden yeniden yazılamaz. Bunun yerine yeni bir commit atın.",
+                false,
+            ));
+        }
+
+        // 4. Message-only amend: --only, staged içerigi bu commit'e katmaz.
+        let output = GitAdapter::execute_with_timeout(
+            &canonical_repo,
+            &["commit", "--amend", "--only", "-m", message],
+            COMMIT_TIMEOUT,
+        )?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(CommandError::new(
+                "GIT_COMMAND_FAILED",
+                format!("Commit mesajı güncellenemedi: {}", stderr.trim()),
+                true,
+            ));
+        }
+
+        // 5. Yeni SHA + tazelenmiş durum
+        let sha_output = GitAdapter::execute_with_timeout(
+            &canonical_repo,
+            &["rev-parse", "HEAD"],
+            COMMIT_TIMEOUT,
+        )?;
+        let commit_sha = String::from_utf8_lossy(&sha_output.stdout)
+            .trim()
+            .to_string();
+        let fresh_status = crate::git::GitStatusParser::get_status(&canonical_repo)?;
+
+        Ok(CommitResult {
+            commit_sha,
+            status: fresh_status,
+        })
+    }
+}
+
+#[cfg(test)]
+mod amend_tests {
+    use super::GitCommitManager;
+
+    #[test]
+    fn amend_guard_requires_unpushed_head() {
+        // Upstream var: ahead>0 ise son commit upstream'de değil → serbest.
+        assert!(GitCommitManager::amend_allowed(Some("origin/main"), 1, false));
+        assert!(GitCommitManager::amend_allowed(Some("origin/main"), 7, false));
+        // ahead == 0 → son commit push edilmiş → reddedilir.
+        assert!(!GitCommitManager::amend_allowed(Some("origin/main"), 0, false));
+        // Upstream yok ama HEAD baska bir uzak dalda → reddedilir.
+        assert!(!GitCommitManager::amend_allowed(None, 0, true));
+        // Tamamen yerel dal → serbest.
+        assert!(GitCommitManager::amend_allowed(None, 0, false));
+    }
 }
