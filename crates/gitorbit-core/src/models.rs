@@ -156,6 +156,30 @@ pub struct GitIdentity {
     pub email: Option<String>,
 }
 
+/// Sonucu of "yoksay" (gitignore) akışının. Public metadata only.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IgnoredFile {
+    /// Depo-yolundaki öğe (girdi).
+    pub path: String,
+    /// Yazılan gitignore deseni (kökene sabitli, dizinler `/` ile biter).
+    pub pattern: String,
+    /// "repo" (.gitignore) | "local" (.git/info/exclude)
+    pub scope: String,
+    /// Desen zaten mevcutsa true — dosyaya tekrar yazılmaz.
+    pub already_present: bool,
+}
+
+/// Tek bir `git stash` girdisi (public metadata — içerik taşımaz).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StashEntry {
+    /// Sıra numarası (`stash@{N}` içindeki N).
+    pub index: String,
+    /// `WIP on branch: sha msg` / `On branch: msg` öneki soyulmuş özet.
+    pub message: String,
+    /// `git stash list --format %ci` tarihi.
+    pub date: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CommitResult {
     pub commit_sha: String,

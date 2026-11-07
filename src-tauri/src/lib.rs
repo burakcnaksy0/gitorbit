@@ -16,8 +16,9 @@ use gitorbit_core::{
     CommandError, CommitDetails, CommitResult, DeviceFlowSession, DiffOutput, GitCommitManager,
     GitConfigManager, GitEnvironment,
     GitHubAccount, GitHubProfile, GitHubPublishResult, GitHubRepoPage, GitIdentity,
-    GitRemoteManager, GitStatus, HistoryOutput, PendingDeviceFlow, PollResult, RemoteInfo,
-    RepoLockRegistry, RepositoryDetails, RepositoryOperationState, RepositoryRecord,
+    GitRemoteManager, GitStatus, HistoryOutput, IgnoredFile, PendingDeviceFlow, PollResult,
+    RemoteInfo, RepoLockRegistry, RepositoryDetails, RepositoryOperationState, RepositoryRecord,
+    StashEntry,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -529,6 +530,76 @@ fn repository_list_remotes(state: State<AppState>, repo_id: String) -> CmdResult
     with_db(&state, |db| RepositoryService::list_remotes(db, &repo_id))
 }
 
+/// Untracked bir dosya/dizini yoksayma dosyasına ekler.
+/// `scope`: "repo" (.gitignore) | "local" (.git/info/exclude — sadece bu makine).
+#[tauri::command]
+fn repository_ignore_file(
+    state: State<AppState>,
+    repo_id: String,
+    path: String,
+    scope: String,
+) -> CmdResult<IgnoredFile> {
+    with_db(&state, |db| {
+        RepositoryService::ignore_file(db, &repo_id, &path, &scope)
+    })
+}
+
+/// Çalışma ağacındaki değişiklikleri stash'ler (kenara alır).
+#[tauri::command]
+fn repository_stash_push(
+    state: State<AppState>,
+    repo_id: String,
+    message: Option<String>,
+    include_untracked: Option<bool>,
+) -> CmdResult<GitStatus> {
+    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+    with_db(&state, |db| {
+        RepositoryService::stash_push(
+            db,
+            &repo_id,
+            message.as_deref().unwrap_or(""),
+            include_untracked.unwrap_or(false),
+        )
+    })
+}
+
+#[tauri::command]
+fn repository_stash_list(state: State<AppState>, repo_id: String) -> CmdResult<Vec<StashEntry>> {
+    with_db(&state, |db| RepositoryService::stash_list(db, &repo_id))
+}
+
+/// Stash'i uygular; stash listede KALIR.
+#[tauri::command]
+fn repository_stash_apply(
+    state: State<AppState>,
+    repo_id: String,
+    id: String,
+) -> CmdResult<GitStatus> {
+    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+    with_db(&state, |db| RepositoryService::stash_apply(db, &repo_id, &id))
+}
+
+/// Stash'i uygular ve listeden düşürür.
+#[tauri::command]
+fn repository_stash_pop(
+    state: State<AppState>,
+    repo_id: String,
+    id: String,
+) -> CmdResult<GitStatus> {
+    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+    with_db(&state, |db| RepositoryService::stash_pop(db, &repo_id, &id))
+}
+
+#[tauri::command]
+fn repository_stash_drop(
+    state: State<AppState>,
+    repo_id: String,
+    id: String,
+) -> CmdResult<Vec<StashEntry>> {
+    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+    with_db(&state, |db| RepositoryService::stash_drop(db, &repo_id, &id))
+}
+
 /// Returns the current operation state (Normal, MergeInProgress, RebaseInProgress, etc.).
 #[tauri::command]
 fn repository_get_operation_state(
@@ -957,6 +1028,12 @@ pub fn run() {
             repository_continue_operation,
             repository_abort_operation,
             repository_list_remotes,
+            repository_ignore_file,
+            repository_stash_push,
+            repository_stash_list,
+            repository_stash_apply,
+            repository_stash_pop,
+            repository_stash_drop,
             repository_get_operation_state,
             // Faz 6 — GitHub accounts & repositories
             github_begin_login,

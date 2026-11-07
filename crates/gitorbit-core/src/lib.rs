@@ -15,8 +15,8 @@ pub use db::Database;
 pub use errors::CommandError;
 pub use git::{
     GitAdapter, GitBranchManager, GitCommitManager, GitConfigManager, GitDiffParser,
-    GitHistoryManager, GitMergeManager, GitOperationStateManager, GitRemoteManager,
-    GitStatusParser,
+    GitHistoryManager, GitIgnoreManager, GitMergeManager, GitOperationStateManager,
+    GitRemoteManager, GitStashManager, GitStatusParser,
 };
 pub use models::*;
 pub use services::github_service::PendingDeviceFlow;

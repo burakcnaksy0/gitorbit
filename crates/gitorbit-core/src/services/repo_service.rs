@@ -608,6 +608,64 @@ impl RepositoryService {
         GitRemoteManager::list_remotes(path)
     }
 
+    // -----------------------------------------------------------------
+    // Ignore & Stash (v0.2 konfor paketi)
+    // -----------------------------------------------------------------
+
+    /// Untracked bir öğeyi yoksayma dosyasına ekler (`scope`: "repo"|"local").
+    pub fn ignore_file(
+        db: &Database,
+        repo_id: &str,
+        path: &str,
+        scope: &str,
+    ) -> Result<crate::models::IgnoredFile, CommandError> {
+        let record = Self::get_repository(db, repo_id)?;
+        crate::git::GitIgnoreManager::ignore(Path::new(&record.canonical_path), path, scope)
+    }
+
+    /// Çalışma ağacındaki değişiklikleri stash'ler; güncel durumu döner.
+    pub fn stash_push(
+        db: &Database,
+        repo_id: &str,
+        message: &str,
+        include_untracked: bool,
+    ) -> Result<GitStatus, CommandError> {
+        let record = Self::get_repository(db, repo_id)?;
+        crate::git::GitStashManager::push(
+            Path::new(&record.canonical_path),
+            message,
+            include_untracked,
+        )
+    }
+
+    pub fn stash_list(db: &Database, repo_id: &str) -> Result<Vec<crate::models::StashEntry>, CommandError> {
+        let record = Self::get_repository(db, repo_id)?;
+        crate::git::GitStashManager::list(Path::new(&record.canonical_path))
+    }
+
+    pub fn stash_apply(
+        db: &Database,
+        repo_id: &str,
+        id: &str,
+    ) -> Result<GitStatus, CommandError> {
+        let record = Self::get_repository(db, repo_id)?;
+        crate::git::GitStashManager::apply_or_pop(Path::new(&record.canonical_path), id, "apply")
+    }
+
+    pub fn stash_pop(db: &Database, repo_id: &str, id: &str) -> Result<GitStatus, CommandError> {
+        let record = Self::get_repository(db, repo_id)?;
+        crate::git::GitStashManager::apply_or_pop(Path::new(&record.canonical_path), id, "pop")
+    }
+
+    pub fn stash_drop(
+        db: &Database,
+        repo_id: &str,
+        id: &str,
+    ) -> Result<Vec<crate::models::StashEntry>, CommandError> {
+        let record = Self::get_repository(db, repo_id)?;
+        crate::git::GitStashManager::drop(Path::new(&record.canonical_path), id)
+    }
+
     /// Detects current operation state (Normal, MergeInProgress, RebaseInProgress, etc.).
     pub fn get_operation_state(
         db: &Database,
