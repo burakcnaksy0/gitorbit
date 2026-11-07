@@ -93,6 +93,8 @@ export interface AppSettings {
   log_level: string;
   confirm_destructive: boolean;
   active_github_account_id: string | null;
+  auto_fetch: boolean;
+  auto_fetch_minutes: number;
 }
 
 export interface AppSettingsUpdate {
@@ -102,6 +104,8 @@ export interface AppSettingsUpdate {
   log_level?: string;
   confirm_destructive?: boolean;
   active_github_account_id?: string | null;
+  auto_fetch?: boolean;
+  auto_fetch_minutes?: number;
 }
 
 // ---------------------------------------------------------------------------

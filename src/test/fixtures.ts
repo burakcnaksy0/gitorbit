@@ -28,6 +28,8 @@ export const mockSettings: AppSettings = {
   log_level: "info",
   confirm_destructive: true,
   active_github_account_id: null,
+  auto_fetch: true,
+  auto_fetch_minutes: 3,
 };
 
 export const mockRepository: RepositoryRecord = {

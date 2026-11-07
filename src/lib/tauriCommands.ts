@@ -287,6 +287,14 @@ export async function repositoryCommit(
   return tauriCall<CommitResult>("repository_commit", { repoId, message, amend });
 }
 
+/** Son commit'in yalnızca mesajını düzenler; push edilmişse AMEND_PUSHED döner (v0.2). */
+export async function repositoryAmendMessage(
+  repoId: string,
+  message: string
+): Promise<CommitResult> {
+  return tauriCall<CommitResult>("repository_amend_message", { repoId, message });
+}
+
 /** Untracked bir öğeyi yoksayma dosyasına ekler (v0.2). */
 export async function repositoryIgnoreFile(
   repoId: string,

@@ -17,6 +17,8 @@ interface SidebarProps {
   onTabChange: (tab: NavigationTab) => void;
   changesCount: number;
   reposCount: number;
+  /** v0.2: tüm depolardaki toplam bekleyen (behind) commit sayısı. */
+  incomingCount?: number;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -34,6 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTabChange,
   changesCount,
   reposCount,
+  incomingCount,
   isCollapsed,
   onToggleCollapse,
 }) => {
@@ -130,6 +133,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     }`}
                   >
                     {item.badge}
+                  </span>
+                )}
+                {!isCollapsed && item.id === "repositories" && (incomingCount ?? 0) > 0 && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-sky-950 text-sky-300 border border-sky-800/60"
+                    title={`${incomingCount} uzak commit bekliyor (pull hazır)`}
+                    aria-label={`${incomingCount} bekleyen uzak commit`}
+                  >
+                    ↓{incomingCount}
                   </span>
                 )}
               </button>

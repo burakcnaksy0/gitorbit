@@ -45,6 +45,8 @@ import {
   settingsUpdate,
 } from "../../lib/tauriCommands";
 import { pickDirectory } from "../../lib/directoryPicker";
+import { notifySystem } from "../../lib/notifications";
+import { useAutoFetch } from "../../lib/useAutoFetch";
 import { useNotify } from "../common/Toast";
 
 // ---------------------------------------------------------------------------
@@ -272,6 +274,27 @@ export const Shell: React.FC = () => {
     ? currentRepo.stagedCount + currentRepo.unstagedCount
     : 0;
 
+  // v0.2 — toplam bekleyen uzak commit (Sidebar rozeti)
+  const totalIncoming = useMemo(
+    () => summaries.reduce((sum, repo) => sum + (repo.behind ?? 0), 0),
+    [summaries]
+  );
+
+  // -------------------------------------------------------------------------
+  // v0.2 — Arka plan fetch (madde 4)
+  // -------------------------------------------------------------------------
+
+  const applyFetchedStatus = useCallback((repoId: string, status: GitStatus) => {
+    setStatuses((prev) => ({ ...prev, [repoId]: status }));
+  }, []);
+
+  useAutoFetch({
+    enabled: settings?.auto_fetch ?? false,
+    minutes: settings?.auto_fetch_minutes ?? 3,
+    repositories,
+    onStatus: applyFetchedStatus,
+  });
+
   // -------------------------------------------------------------------------
   // Repository actions
   // -------------------------------------------------------------------------
@@ -348,10 +371,15 @@ export const Shell: React.FC = () => {
           "GitHub'da yayınlandı",
           result.warning ? `${result.html_url} — ${result.warning}` : result.html_url
         );
+        void notifySystem("Depo yayınlandı", result.html_url);
       } else {
         notify.warning(
           "GitHub'da oluşturuldu — push tamamlanamadı",
           result.warning ?? result.html_url
+        );
+        void notifySystem(
+          "Yayınlama yarım kaldı",
+          `Repo oluşturuldu ancak push edilemedi — ${result.html_url}`
         );
       }
     },
@@ -376,8 +404,10 @@ export const Shell: React.FC = () => {
         setCurrentRepoId(result.repository.id);
         setActiveTab("changes");
         notify.success("Depo klonlandı", result.repository.display_name);
+        void notifySystem("Depo klonlandı", result.repository.display_name);
       } catch (err) {
         showError("Depo Klonla", err);
+        void notifySystem("Klonlama başarısız", errorMessage(err));
       }
     },
     [loadRepositories, notify, showError]
@@ -482,6 +512,11 @@ export const Shell: React.FC = () => {
       );
     } catch (err) {
       showError("Dışa Aktar (Push)", err);
+      // Uzak reddetti (non-fast-forward vb.) ve kullanıcı muhtemelen pencerede
+      // değil — OS bildirimi dikkat çeksin.
+      if (errorCode(err) === "REMOTE_REJECTED") {
+        void notifySystem("Push reddedildi", errorMessage(err));
+      }
     } finally {
       setIsPushing(false);
     }
@@ -646,6 +681,7 @@ export const Shell: React.FC = () => {
           onTabChange={setActiveTab}
           changesCount={changesCount}
           reposCount={summaries.length}
+          incomingCount={totalIncoming}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         />

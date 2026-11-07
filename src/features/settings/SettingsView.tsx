@@ -140,6 +140,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     [onError, onSaveSettings]
   );
 
+  // v0.2 — arka plan fetch ayarları
+  const [autoFetchBusy, setAutoFetchBusy] = useState(false);
+
+  const handleAutoFetchSave = useCallback(
+    async (update: AppSettingsUpdate) => {
+      if (!onSaveSettings) return;
+      setAutoFetchBusy(true);
+      try {
+        await onSaveSettings(update);
+      } catch (err) {
+        if (onError) onError("Otomatik Kontrolü Kaydet", err);
+      } finally {
+        setAutoFetchBusy(false);
+      }
+    },
+    [onError, onSaveSettings]
+  );
+
   const gitStatus = (() => {
     if (!environment) {
       return {
@@ -208,6 +226,66 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               )}
             </button>
           </div>
+        </section>
+
+        {/* v0.2 — Arka Plan Eşitlemesi (auto-fetch) */}
+        <section className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-200">
+                Uzaktan Değişiklikleri Otomatik Kontrol Et
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Uygulama açıkken belirli aralıklarla fetch yapılır; uzakta yeni
+                commit varsa rozetlerde görünür. Pull otomatik yapılmaz.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings?.auto_fetch ?? true}
+              disabled={!onSaveSettings || autoFetchBusy}
+              onClick={() =>
+                void handleAutoFetchSave({ auto_fetch: !(settings?.auto_fetch ?? true) })
+              }
+              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors cursor-pointer disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-sky-400 ${
+                settings?.auto_fetch ?? true
+                  ? "bg-sky-600 border-sky-500"
+                  : "bg-slate-700 border-slate-600"
+              }`}
+              aria-label="Otomatik kontrolü aç/kapat"
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                  settings?.auto_fetch ?? true ? "translate-x-[18px]" : "translate-x-[3px]"
+                }`}
+              />
+            </button>
+          </div>
+          {settings?.auto_fetch ?? true ? (
+            <label className="flex items-center gap-2 text-xs text-slate-300">
+              Aralık:
+              <select
+                value={settings?.auto_fetch_minutes ?? 3}
+                disabled={!onSaveSettings || autoFetchBusy}
+                onChange={(e) =>
+                  void handleAutoFetchSave({ auto_fetch_minutes: Number(e.target.value) })
+                }
+                className="bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-400 cursor-pointer"
+                aria-label="Otomatik kontrol aralığı (dakika)"
+              >
+                {[1, 3, 5, 10, 15, 30, 60].map((m) => (
+                  <option key={m} value={m}>
+                    {m} dakika
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <p className="text-[11px] text-slate-500">
+              Kapalıyken uzak durum yalnızca Senkronize Et / açılışta güncellenir.
+            </p>
+          )}
         </section>
 
         {/* Git Executable Environment Section */}
