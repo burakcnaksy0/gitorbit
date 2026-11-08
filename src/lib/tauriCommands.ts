@@ -428,11 +428,14 @@ export async function repositoryCompareBranches(
  */
 export async function repositoryFetch(
   repoId: string,
-  remote?: string | null
+  remote?: string | null,
+  background?: boolean
 ): Promise<GitStatus> {
   return tauriCall<GitStatus>("repository_fetch", {
     repoId,
     remote: remote ?? null,
+    // GO-03: arka plan turu — Rust tarafı kilitli depoyu hızlıca atlar.
+    background: background ?? null,
   });
 }
 

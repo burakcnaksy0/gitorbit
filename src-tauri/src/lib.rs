@@ -18,11 +18,10 @@ use gitorbit_core::sync::{
 use gitorbit_core::{
     AppInfo, AppSettings, AppSettingsUpdate, BranchComparison, BranchInfo, CloneResult,
     CommandError, CommitDetails, CommitResult, DeviceFlowSession, DiffOutput, GitCommitManager,
-    GitConfigManager, GitEnvironment,
-    GitHubAccount, GitHubProfile, GitHubPublishResult, GitHubRepoPage, GitIdentity,
-    GitRemoteManager, GitStatus, HistoryOutput, IgnoredFile, PendingDeviceFlow, PollResult,
-    RemoteInfo, RepoLockRegistry, RepositoryDetails, RepositoryOperationState, RepositoryRecord,
-    StashEntry,
+    GitConfigManager, GitEnvironment, GitHubAccount, GitHubProfile, GitHubPublishResult,
+    GitHubRepoPage, GitIdentity, GitRemoteManager, GitStatus, HistoryOutput, IgnoredFile,
+    PendingDeviceFlow, PollResult, RemoteInfo, RepoLockRegistry, RepositoryDetails,
+    RepositoryOperationState, RepositoryRecord, StashEntry,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -125,6 +124,22 @@ where
     f(&db).map_err(AppError::from)
 }
 
+/// GO-01 (denetim v0.2.1): Tauri v2'de yalnızca `async` komutlar ana olay
+/// döngüsü DIŞINDA çalışır; senkron komutlar main thread'te yürür ve bloklanırsa
+/// tüm pencere donar. Bu yardımcı komut gövdesini blocking havuzuna taşır —
+/// git/HTTP yapan her komut UI'yi artık kilitlemez.
+async fn offload<T: Send + 'static>(
+    app: AppHandle,
+    f: impl FnOnce(State<'_, AppState>) -> CmdResult<T> + Send + 'static,
+) -> CmdResult<T> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        f(state)
+    })
+    .await
+    .map_err(|_| AppError::simple("INTERNAL_ERROR", "İş yürütülemedi.", false))?
+}
+
 // ---------------------------------------------------------------------------
 // Faz 0 / utility commands (kept from original skeleton)
 // ---------------------------------------------------------------------------
@@ -153,48 +168,75 @@ fn app_get_environment() -> GitEnvironment {
 /// Adds a repository already under Git version control. Use
 /// `repository_init` for plain (non-Git) folders.
 #[tauri::command]
-fn repository_add(state: State<AppState>, path: String) -> CmdResult<RepositoryRecord> {
-    with_db(&state, |db| RepositoryService::add_repository(db, &path))
+async fn repository_add(app: AppHandle, path: String) -> CmdResult<RepositoryRecord> {
+    offload(app, move |state| {
+        with_db(&state, |db| RepositoryService::add_repository(db, &path))
+    })
+    .await
 }
 
 /// Initializes `git init` in a plain directory and registers it.
 /// Used when the user chooses "open as Git repository" for a non-Git folder.
 #[tauri::command]
-fn repository_init(state: State<AppState>, path: String) -> CmdResult<RepositoryRecord> {
-    with_db(&state, |db| RepositoryService::init_repository(db, &path))
+async fn repository_init(app: AppHandle, path: String) -> CmdResult<RepositoryRecord> {
+    offload(app, move |state| {
+        with_db(&state, |db| RepositoryService::init_repository(db, &path))
+    })
+    .await
 }
 
 /// Lists all registered repositories.
 #[tauri::command]
-fn repository_list(state: State<AppState>) -> CmdResult<Vec<RepositoryRecord>> {
-    with_db(&state, RepositoryService::list_repositories)
+async fn repository_list(app: AppHandle) -> CmdResult<Vec<RepositoryRecord>> {
+    offload(app, move |state| {
+        with_db(&state, RepositoryService::list_repositories)
+    })
+    .await
 }
 
 /// Removes a repository record from the DB. Does NOT delete files on disk.
 #[tauri::command]
-fn repository_remove(state: State<AppState>, repo_id: String) -> CmdResult<bool> {
-    with_db(&state, |db| {
-        RepositoryService::remove_repository(db, &repo_id)
+async fn repository_remove(app: AppHandle, repo_id: String) -> CmdResult<bool> {
+    offload(app, move |state| {
+        // GO-11: yürüyen bir işlem (fetch/push/clone...) olan depo kayıthaneden
+        // silinmez — işlem kendi kilidiyle yarışırdı (geç aşama geri yazımı).
+        if state.locks.is_locked(&repo_id) {
+            return Err(AppError::from(CommandError::repository_busy(
+                "Bu depoda yürüyen bir işlem var; bitince tekrar deneyin.",
+            )));
+        }
+        with_db(&state, |db| {
+            RepositoryService::remove_repository(db, &repo_id)
+        })
     })
+    .await
 }
 
 /// v0.2 madde 10 — sabitleme bayrağını günceller (yalnızca DB; depo ağacına
 /// dokunmaz, bu yüzden kilit gerektirmez).
 #[tauri::command]
-fn repository_set_pinned(
-    state: State<AppState>,
+async fn repository_set_pinned(
+    app: AppHandle,
     repo_id: String,
     pinned: bool,
 ) -> CmdResult<RepositoryRecord> {
-    with_db(&state, |db| RepositoryService::set_pinned(db, &repo_id, pinned))
+    offload(app, move |state| {
+        with_db(&state, |db| {
+            RepositoryService::set_pinned(db, &repo_id, pinned)
+        })
+    })
+    .await
 }
 
 /// Returns the current Git status (branch, staged/unstaged/untracked files, etc.).
 #[tauri::command]
-fn repository_get_status(state: State<AppState>, repo_id: String) -> CmdResult<GitStatus> {
-    with_db(&state, |db| {
-        RepositoryService::get_repository_status(db, &repo_id)
+async fn repository_get_status(app: AppHandle, repo_id: String) -> CmdResult<GitStatus> {
+    offload(app, move |state| {
+        with_db(&state, |db| {
+            RepositoryService::get_repository_status(db, &repo_id)
+        })
     })
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -204,29 +246,35 @@ fn repository_get_status(state: State<AppState>, repo_id: String) -> CmdResult<G
 /// Stages the given relative file paths.
 /// Rejects absolute paths and path traversal (`..`) attempts.
 #[tauri::command]
-fn repository_stage_files(
-    state: State<AppState>,
+async fn repository_stage_files(
+    app: AppHandle,
     repo_id: String,
     paths: Vec<String>,
 ) -> CmdResult<GitStatus> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::stage_files(db, &repo_id, &paths)
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::stage_files(db, &repo_id, &paths)
+        })
     })
+    .await
 }
 
 /// Unstages the given relative file paths.
 /// Rejects absolute paths and path traversal attempts.
 #[tauri::command]
-fn repository_unstage_files(
-    state: State<AppState>,
+async fn repository_unstage_files(
+    app: AppHandle,
     repo_id: String,
     paths: Vec<String>,
 ) -> CmdResult<GitStatus> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::unstage_files(db, &repo_id, &paths)
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::unstage_files(db, &repo_id, &paths)
+        })
     })
+    .await
 }
 
 /// Returns a typed diff for a single file.
@@ -237,15 +285,18 @@ fn repository_unstage_files(
 /// Large diffs (> 512 KB) are returned with `truncated = true`.
 /// Binary files are returned with `binary = true` and an empty `lines` array.
 #[tauri::command]
-fn repository_get_diff(
-    state: State<AppState>,
+async fn repository_get_diff(
+    app: AppHandle,
     repo_id: String,
     file_path: String,
     staged: bool,
 ) -> CmdResult<DiffOutput> {
-    with_db(&state, |db| {
-        RepositoryService::get_file_diff(db, &repo_id, &file_path, staged)
+    offload(app, move |state| {
+        with_db(&state, |db| {
+            RepositoryService::get_file_diff(db, &repo_id, &file_path, staged)
+        })
     })
+    .await
 }
 
 /// Discards changes for a single file (unstaged) or removes an untracked file.
@@ -256,26 +307,32 @@ fn repository_get_diff(
 ///
 /// NEVER runs `git clean -fd`. Untracked files are removed one by one.
 #[tauri::command]
-fn repository_discard_changes(
-    state: State<AppState>,
+async fn repository_discard_changes(
+    app: AppHandle,
     repo_id: String,
     file_path: String,
     expected_status_hash: String,
 ) -> CmdResult<GitStatus> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::discard_changes(db, &repo_id, &file_path, &expected_status_hash)
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::discard_changes(db, &repo_id, &file_path, &expected_status_hash)
+        })
     })
+    .await
 }
 
 /// Returns the status hash for the given repository — used by the frontend
 /// to obtain the token before calling `repository_discard_changes`.
 #[tauri::command]
-fn repository_get_status_hash(state: State<AppState>, repo_id: String) -> CmdResult<String> {
-    with_db(&state, |db| {
-        let status = RepositoryService::get_repository_status(db, &repo_id)?;
-        Ok(RepositoryService::compute_status_hash(&status))
+async fn repository_get_status_hash(app: AppHandle, repo_id: String) -> CmdResult<String> {
+    offload(app, move |state| {
+        with_db(&state, |db| {
+            let status = RepositoryService::get_repository_status(db, &repo_id)?;
+            Ok(RepositoryService::compute_status_hash(&status))
+        })
     })
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -284,121 +341,148 @@ fn repository_get_status_hash(state: State<AppState>, repo_id: String) -> CmdRes
 
 /// Lists all local and remote branches for a repository.
 #[tauri::command]
-fn repository_get_branches(state: State<AppState>, repo_id: String) -> CmdResult<Vec<BranchInfo>> {
-    with_db(&state, |db| RepositoryService::get_branches(db, &repo_id))
+async fn repository_get_branches(app: AppHandle, repo_id: String) -> CmdResult<Vec<BranchInfo>> {
+    offload(app, move |state| {
+        with_db(&state, |db| RepositoryService::get_branches(db, &repo_id))
+    })
+    .await
 }
 
 /// Creates a new branch from a base reference.
 #[tauri::command]
-fn repository_create_branch(
-    state: State<AppState>,
+async fn repository_create_branch(
+    app: AppHandle,
     repo_id: String,
     name: String,
     base_ref: Option<String>,
     checkout: bool,
 ) -> CmdResult<BranchInfo> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::create_branch(db, &repo_id, &name, base_ref.as_deref(), checkout)
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::create_branch(db, &repo_id, &name, base_ref.as_deref(), checkout)
+        })
     })
+    .await
 }
 
 /// Safely checks out a branch. If uncommitted changes conflict, returns DIRTY_WORKTREE error.
 #[tauri::command]
-fn repository_checkout_branch(
-    state: State<AppState>,
+async fn repository_checkout_branch(
+    app: AppHandle,
     repo_id: String,
     branch: String,
 ) -> CmdResult<GitStatus> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::checkout_branch(db, &repo_id, &branch)
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::checkout_branch(db, &repo_id, &branch)
+        })
     })
+    .await
 }
 
 /// Safely deletes a branch (never active branch).
 #[tauri::command]
-fn repository_delete_branch(
-    state: State<AppState>,
+async fn repository_delete_branch(
+    app: AppHandle,
     repo_id: String,
     branch: String,
     force: bool,
 ) -> CmdResult<bool> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::delete_branch(db, &repo_id, &branch, force)
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::delete_branch(db, &repo_id, &branch, force)
+        })
     })
+    .await
 }
 
 /// Reads effective Git user.name and user.email for a repository.
 #[tauri::command]
-fn repository_get_identity(state: State<AppState>, repo_id: String) -> CmdResult<GitIdentity> {
-    with_db(&state, |db| {
-        RepositoryService::get_git_identity(db, &repo_id)
+async fn repository_get_identity(app: AppHandle, repo_id: String) -> CmdResult<GitIdentity> {
+    offload(app, move |state| {
+        with_db(&state, |db| {
+            RepositoryService::get_git_identity(db, &repo_id)
+        })
     })
+    .await
 }
 
 /// Sets repository-local user.name and user.email.
 #[tauri::command]
-fn repository_set_identity(
-    state: State<AppState>,
+async fn repository_set_identity(
+    app: AppHandle,
     repo_id: String,
     name: String,
     email: String,
 ) -> CmdResult<GitIdentity> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::set_git_identity(db, &repo_id, &name, &email)
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::set_git_identity(db, &repo_id, &name, &email)
+        })
     })
+    .await
 }
 
 /// Creates a commit with the provided message.
 /// Validates message, staged changes, and Git identity guard.
 #[tauri::command]
-fn repository_commit(
-    state: State<AppState>,
+async fn repository_commit(
+    app: AppHandle,
     repo_id: String,
     message: String,
     amend: Option<bool>,
 ) -> CmdResult<CommitResult> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::commit(db, &repo_id, &message, amend.unwrap_or(false))
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::commit(db, &repo_id, &message, amend.unwrap_or(false))
+        })
     })
+    .await
 }
 
 /// Son commit'in yalnızca mesajını yeniden yazar. Push edilmiş commit
 /// reddedilir (AMEND_PUSHED) — geçmiş sessizce değiştirilmez.
 #[tauri::command]
-fn repository_amend_message(
-    state: State<AppState>,
+async fn repository_amend_message(
+    app: AppHandle,
     repo_id: String,
     message: String,
 ) -> CmdResult<CommitResult> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::amend_message(db, &repo_id, &message)
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::amend_message(db, &repo_id, &message)
+        })
     })
+    .await
 }
 
 /// Reads commit history with pagination.
 #[tauri::command]
-fn repository_get_history(
-    state: State<AppState>,
+async fn repository_get_history(
+    app: AppHandle,
     repo_id: String,
     ref_name: Option<String>,
     limit: Option<usize>,
     offset: Option<usize>,
 ) -> CmdResult<HistoryOutput> {
-    with_db(&state, |db| {
-        RepositoryService::get_history(
-            db,
-            &repo_id,
-            ref_name.as_deref(),
-            limit.unwrap_or(50),
-            offset.unwrap_or(0),
-        )
+    offload(app, move |state| {
+        with_db(&state, |db| {
+            RepositoryService::get_history(
+                db,
+                &repo_id,
+                ref_name.as_deref(),
+                limit.unwrap_or(50),
+                offset.unwrap_or(0),
+            )
+        })
     })
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -407,78 +491,95 @@ fn repository_get_history(
 
 /// Fetches changes from a remote without altering working tree.
 #[tauri::command]
-fn repository_fetch(
-    state: State<AppState>,
+async fn repository_fetch(
+    app: AppHandle,
     repo_id: String,
     remote: Option<String>,
+    background: Option<bool>,
 ) -> CmdResult<GitStatus> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::fetch(db, &repo_id, remote.as_deref())
+    offload(app, move |state| {
+        // GO-03: arka plan otomatik-fetch turu, kullanıcının işlem yaptığı
+        // (kilitli) depoyu boşuna zorlamaz — hızlıca atlanır.
+        if background.unwrap_or(false) && state.locks.is_locked(&repo_id) {
+            return Err(AppError::from(CommandError::repository_busy(
+                "Depoda yürüyen bir işlem var; arka plan tazelemesi atlandı.",
+            )));
+        }
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::fetch(db, &repo_id, remote.as_deref())
+        })
     })
+    .await
 }
 
 /// Pulls changes into the active branch.
 #[tauri::command]
-fn repository_pull(
-    state: State<AppState>,
+async fn repository_pull(
+    app: AppHandle,
     repo_id: String,
     remote: Option<String>,
     branch: Option<String>,
     strategy: Option<String>,
 ) -> CmdResult<GitStatus> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::pull(
-            db,
-            &repo_id,
-            remote.as_deref(),
-            branch.as_deref(),
-            strategy.as_deref(),
-        )
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::pull(
+                db,
+                &repo_id,
+                remote.as_deref(),
+                branch.as_deref(),
+                strategy.as_deref(),
+            )
+        })
     })
+    .await
 }
 
 /// Pushes commits of the active branch to remote.
 #[tauri::command]
-fn repository_push(
-    state: State<AppState>,
+async fn repository_push(
+    app: AppHandle,
     repo_id: String,
     remote: Option<String>,
     branch: Option<String>,
     force: Option<bool>,
     set_upstream: Option<bool>,
 ) -> CmdResult<GitStatus> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        // Hesap bazlı kimlik çözümü: origin owner'ı ↔ bağlı hesap login'i.
-        // Eşleşme varsa push o hesabın token'ıyla (yalnızca HTTPS) gider ve
-        // depo yerel commit kimliği hesaba göre kendiliğinden düzelir.
-        let owner_identity = origin_owner_identity(&state, db, &repo_id);
-        let token = match &owner_identity {
-            // HTTPS: token alınamazsa (AUTH_EXPIRED dahil) hata iletilir —
-            // kimliksiz deneme yanıltıcı "Invalid username or token" verirdi.
-            Some((account, true)) => Some(state.github.access_token(db, &account.id)?),
-            // SSH remote: ~/.ssh/config kimliği zaten doğru hesabı seçer.
-            _ => None,
-        };
-        if let Some((account, _)) = &owner_identity {
-            let (name, email) = GitHubService::git_identity_for(account);
-            // Best-effort ve yıkıcı değil: yalnızca gelecek commit'lerin kimliği
-            // ayarlanır; manuel ayarlanmış kimliğe dokunulmaz. Geçmiş yeniden
-            // yazımı yalnızca yayınlama akışında yapılır (remote boşken güvenli).
-            let _ = apply_repo_identity(db, &repo_id, &name, &email, true, false);
-        }
-        RepositoryService::push(
-            db,
-            &repo_id,
-            remote.as_deref(),
-            branch.as_deref(),
-            force.unwrap_or(false),
-            set_upstream.unwrap_or(false),
-            token.as_deref(),
-        )
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            // Hesap bazlı kimlik çözümü: origin owner'ı ↔ bağlı hesap login'i.
+            // Eşleşme varsa push o hesabın token'ıyla (yalnızca HTTPS) gider ve
+            // depo yerel commit kimliği hesaba göre kendiliğinden düzelir.
+            let owner_identity = origin_owner_identity(&state, db, &repo_id);
+            let token = match &owner_identity {
+                // HTTPS: token alınamazsa (AUTH_EXPIRED dahil) hata iletilir —
+                // kimliksiz deneme yanıltıcı "Invalid username or token" verirdi.
+                Some((account, true)) => Some(state.github.access_token(db, &account.id)?),
+                // SSH remote: ~/.ssh/config kimliği zaten doğru hesabı seçer.
+                _ => None,
+            };
+            if let Some((account, _)) = &owner_identity {
+                let (name, email) = GitHubService::git_identity_for(account);
+                // Best-effort ve yıkıcı değil: yalnızca gelecek commit'lerin kimliği
+                // ayarlanır; manuel ayarlanmış kimliğe dokunulmaz. Geçmiş yeniden
+                // yazımı yalnızca yayınlama akışında yapılır (remote boşken güvenli).
+                let _ = apply_repo_identity(db, &repo_id, &name, &email, true, false);
+            }
+            RepositoryService::push(
+                db,
+                &repo_id,
+                remote.as_deref(),
+                branch.as_deref(),
+                force.unwrap_or(false),
+                set_upstream.unwrap_or(false),
+                token.as_deref(),
+            )
+        })
     })
+    .await
 }
 
 /// Çözüm: origin URL'sinin owner'ı ↔ bağlı GitHub hesabı login'i. Dönüş:
@@ -561,89 +662,116 @@ fn apply_repo_identity(
 
 /// Lists all configured remotes for a repository.
 #[tauri::command]
-fn repository_list_remotes(state: State<AppState>, repo_id: String) -> CmdResult<Vec<RemoteInfo>> {
-    with_db(&state, |db| RepositoryService::list_remotes(db, &repo_id))
+async fn repository_list_remotes(app: AppHandle, repo_id: String) -> CmdResult<Vec<RemoteInfo>> {
+    offload(app, move |state| {
+        with_db(&state, |db| RepositoryService::list_remotes(db, &repo_id))
+    })
+    .await
 }
 
 /// Untracked bir dosya/dizini yoksayma dosyasına ekler.
 /// `scope`: "repo" (.gitignore) | "local" (.git/info/exclude — sadece bu makine).
 #[tauri::command]
-fn repository_ignore_file(
-    state: State<AppState>,
+async fn repository_ignore_file(
+    app: AppHandle,
     repo_id: String,
     path: String,
     scope: String,
 ) -> CmdResult<IgnoredFile> {
-    with_db(&state, |db| {
-        RepositoryService::ignore_file(db, &repo_id, &path, &scope)
+    offload(app, move |state| {
+        // GO-10: .gitignore / info-exclude depoda DİSK YAZMASIDIR — stash,
+        // checkout, commit gibi kilitli işlemlerle yarıştırılmamalı.
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::ignore_file(db, &repo_id, &path, &scope)
+        })
     })
+    .await
 }
 
 /// Çalışma ağacındaki değişiklikleri stash'ler (kenara alır).
 #[tauri::command]
-fn repository_stash_push(
-    state: State<AppState>,
+async fn repository_stash_push(
+    app: AppHandle,
     repo_id: String,
     message: Option<String>,
     include_untracked: Option<bool>,
 ) -> CmdResult<GitStatus> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::stash_push(
-            db,
-            &repo_id,
-            message.as_deref().unwrap_or(""),
-            include_untracked.unwrap_or(false),
-        )
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::stash_push(
+                db,
+                &repo_id,
+                message.as_deref().unwrap_or(""),
+                include_untracked.unwrap_or(false),
+            )
+        })
     })
+    .await
 }
 
 #[tauri::command]
-fn repository_stash_list(state: State<AppState>, repo_id: String) -> CmdResult<Vec<StashEntry>> {
-    with_db(&state, |db| RepositoryService::stash_list(db, &repo_id))
+async fn repository_stash_list(app: AppHandle, repo_id: String) -> CmdResult<Vec<StashEntry>> {
+    offload(app, move |state| {
+        with_db(&state, |db| RepositoryService::stash_list(db, &repo_id))
+    })
+    .await
 }
 
 /// Stash'i uygular; stash listede KALIR.
 #[tauri::command]
-fn repository_stash_apply(
-    state: State<AppState>,
+async fn repository_stash_apply(
+    app: AppHandle,
     repo_id: String,
     id: String,
 ) -> CmdResult<GitStatus> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| RepositoryService::stash_apply(db, &repo_id, &id))
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::stash_apply(db, &repo_id, &id)
+        })
+    })
+    .await
 }
 
 /// Stash'i uygular ve listeden düşürür.
 #[tauri::command]
-fn repository_stash_pop(
-    state: State<AppState>,
-    repo_id: String,
-    id: String,
-) -> CmdResult<GitStatus> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| RepositoryService::stash_pop(db, &repo_id, &id))
+async fn repository_stash_pop(app: AppHandle, repo_id: String, id: String) -> CmdResult<GitStatus> {
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| RepositoryService::stash_pop(db, &repo_id, &id))
+    })
+    .await
 }
 
 #[tauri::command]
-fn repository_stash_drop(
-    state: State<AppState>,
+async fn repository_stash_drop(
+    app: AppHandle,
     repo_id: String,
     id: String,
 ) -> CmdResult<Vec<StashEntry>> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| RepositoryService::stash_drop(db, &repo_id, &id))
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::stash_drop(db, &repo_id, &id)
+        })
+    })
+    .await
 }
 
 /// Returns the current operation state (Normal, MergeInProgress, RebaseInProgress, etc.).
 #[tauri::command]
-fn repository_get_operation_state(
-    state: State<AppState>,
+async fn repository_get_operation_state(
+    app: AppHandle,
     repo_id: String,
 ) -> CmdResult<RepositoryOperationState> {
-    with_db(&state, |db| {
-        RepositoryService::get_operation_state(db, &repo_id)
+    offload(app, move |state| {
+        with_db(&state, |db| {
+            RepositoryService::get_operation_state(db, &repo_id)
+        })
     })
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -657,18 +785,21 @@ fn repository_get_operation_state(
 ///
 /// UI should: show user_code → open verification_uri in browser → poll `github_poll_login`.
 #[tauri::command]
-fn github_begin_login(state: State<AppState>) -> CmdResult<DeviceFlowSession> {
-    let (session, pending) = state.github.begin_device_flow().map_err(AppError::from)?;
+async fn github_begin_login(app: AppHandle) -> CmdResult<DeviceFlowSession> {
+    offload(app, move |state| {
+        let (session, pending) = state.github.begin_device_flow().map_err(AppError::from)?;
 
-    let mut flows = state
-        .pending_device_flow
-        .lock()
-        .map_err(|_| AppError::simple("INTERNAL_ERROR", "Oturum kilidi alınamadı.", false))?;
-    // Opportunistic GC: drop sessions whose user never finished the browser step.
-    flows.retain(|_, p| !p.is_expired());
-    // Keyed insert: a second concurrent login never evicts the first one.
-    flows.insert(session.session_token.clone(), pending);
-    Ok(session)
+        let mut flows = state
+            .pending_device_flow
+            .lock()
+            .map_err(|_| AppError::simple("INTERNAL_ERROR", "Oturum kilidi alınamadı.", false))?;
+        // Opportunistic GC: drop sessions whose user never finished the browser step.
+        flows.retain(|_, p| !p.is_expired());
+        // Keyed insert: a second concurrent login never evicts the first one.
+        flows.insert(session.session_token.clone(), pending);
+        Ok(session)
+    })
+    .await
 }
 
 /// Polls the in-progress device-flow session once.
@@ -679,86 +810,99 @@ fn github_begin_login(state: State<AppState>) -> CmdResult<DeviceFlowSession> {
 /// - `Err(DEVICE_FLOW_EXPIRED)` → code expired, call `github_begin_login` again.
 /// - `Err(AUTH_REQUIRED)` → user denied access.
 #[tauri::command]
-fn github_poll_login(state: State<AppState>, session_token: String) -> CmdResult<PollResult> {
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| AppError::simple("DATABASE_ERROR", "Veritabanı kilidi alınamadı.", false))?;
+async fn github_poll_login(app: AppHandle, session_token: String) -> CmdResult<PollResult> {
+    offload(app, move |state| {
+        let db = state.db.lock().map_err(|_| {
+            AppError::simple("DATABASE_ERROR", "Veritabanı kilidi alınamadı.", false)
+        })?;
 
-    // Take this session's pending flow out of the map. `PendingDeviceFlow` is
-    // not Clone, so we remove → poll → re-insert only if still pending. This
-    // also guarantees the session is dropped on success, expiry or denial.
-    let pending = {
-        let mut flows = state
-            .pending_device_flow
-            .lock()
-            .map_err(|_| AppError::simple("INTERNAL_ERROR", "Oturum kilidi alınamadı.", false))?;
-        flows.retain(|_, p| !p.is_expired());
-        flows.remove(&session_token).ok_or_else(|| {
-            AppError::simple(
-                "NO_ACTIVE_LOGIN",
-                "Aktif giriş oturumu yok veya süresi dolmuş. Önce github_begin_login çağırın.",
-                true,
-            )
-        })?
-    };
+        // Take this session's pending flow out of the map. `PendingDeviceFlow` is
+        // not Clone, so we remove → poll → re-insert only if still pending. This
+        // also guarantees the session is dropped on success, expiry or denial.
+        let pending = {
+            let mut flows = state.pending_device_flow.lock().map_err(|_| {
+                AppError::simple("INTERNAL_ERROR", "Oturum kilidi alınamadı.", false)
+            })?;
+            flows.retain(|_, p| !p.is_expired());
+            flows.remove(&session_token).ok_or_else(|| {
+                AppError::simple(
+                    "NO_ACTIVE_LOGIN",
+                    "Aktif giriş oturumu yok veya süresi dolmuş. Önce github_begin_login çağırın.",
+                    true,
+                )
+            })?
+        };
 
-    let pending_result = state
-        .github
-        .poll_device_flow(&db, &pending, &session_token)
-        .map_err(AppError::from)?;
+        let pending_result = state
+            .github
+            .poll_device_flow(&db, &pending, &session_token)
+            .map_err(AppError::from)?;
 
-    // Keep the session alive only while the user has not finished the browser step.
-    if matches!(pending_result, PollResult::Pending)
-        && let Ok(mut flows) = state.pending_device_flow.lock()
-    {
-        flows.insert(session_token, pending);
-    }
+        // Keep the session alive only while the user has not finished the browser step.
+        if matches!(pending_result, PollResult::Pending)
+            && let Ok(mut flows) = state.pending_device_flow.lock()
+        {
+            flows.insert(session_token, pending);
+        }
 
-    Ok(pending_result)
+        Ok(pending_result)
+    })
+    .await
 }
 
 /// Lists all connected GitHub accounts.  Token fields are NEVER included.
 #[tauri::command]
-fn github_list_accounts(state: State<AppState>) -> CmdResult<Vec<GitHubAccount>> {
-    with_db(&state, |db| state.github.list_accounts(db))
+async fn github_list_accounts(app: AppHandle) -> CmdResult<Vec<GitHubAccount>> {
+    offload(app, move |state| {
+        with_db(&state, |db| state.github.list_accounts(db))
+    })
+    .await
 }
 
 /// Disconnects a GitHub account: deletes token from OS keyring and removes DB record.
 /// Git credential helpers are NOT modified (per spec §6.2).
 #[tauri::command]
-fn github_disconnect_account(state: State<AppState>, account_id: String) -> CmdResult<()> {
-    with_db(&state, |db| {
-        state.github.disconnect_account(db, &account_id)
+async fn github_disconnect_account(app: AppHandle, account_id: String) -> CmdResult<()> {
+    offload(app, move |state| {
+        with_db(&state, |db| {
+            state.github.disconnect_account(db, &account_id)
+        })
     })
+    .await
 }
 
 /// Lists repositories for the given account with pagination (1-indexed page, clamped per_page).
 /// Returns `AUTH_EXPIRED` if the token is missing from the OS credential store.
 #[tauri::command]
-fn github_list_repos(
-    state: State<AppState>,
+async fn github_list_repos(
+    app: AppHandle,
     account_id: String,
     page: Option<u32>,
     per_page: Option<u32>,
 ) -> CmdResult<GitHubRepoPage> {
-    with_db(&state, |db| {
-        state
-            .github
-            .list_repos(db, &account_id, page.unwrap_or(1), per_page.unwrap_or(30))
+    offload(app, move |state| {
+        with_db(&state, |db| {
+            state
+                .github
+                .list_repos(db, &account_id, page.unwrap_or(1), per_page.unwrap_or(30))
+        })
     })
+    .await
 }
 
 /// Fetches the live public profile/overview (bio, counts, avatar…) for a
 /// connected account. Token stays in Rust; only public metadata is returned.
 #[tauri::command]
-fn github_get_account_profile(
-    state: State<AppState>,
+async fn github_get_account_profile(
+    app: AppHandle,
     account_id: String,
 ) -> CmdResult<GitHubProfile> {
-    with_db(&state, |db| {
-        state.github.get_account_profile(db, &account_id)
+    offload(app, move |state| {
+        with_db(&state, |db| {
+            state.github.get_account_profile(db, &account_id)
+        })
     })
+    .await
 }
 
 /// Publishes a local repository to GitHub:
@@ -771,99 +915,101 @@ fn github_get_account_profile(
 /// repo and the configured origin are kept and the reason is returned as a
 /// warning — the user can finish from the status bar's Push button later.
 #[tauri::command]
-fn github_publish_repository(
-    state: State<AppState>,
+async fn github_publish_repository(
+    app: AppHandle,
     account_id: String,
     repo_id: String,
     name: String,
     description: Option<String>,
     private: Option<bool>,
 ) -> CmdResult<GitHubPublishResult> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| AppError::simple("DATABASE_ERROR", "Veritabanı kilidi alınamadı.", false))?;
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        let db = state
+            .db
+            .lock()
+            .map_err(|_| AppError::simple("DATABASE_ERROR", "Veritabanı kilidi alınamadı.", false))?;
 
-    // 1. Fail fast BEFORE creating anything on GitHub.
-    let record = RepositoryService::get_repository(&db, &repo_id).map_err(AppError::from)?;
-    let path = std::path::Path::new(&record.canonical_path);
-    let remotes = GitRemoteManager::list_remotes(path).map_err(AppError::from)?;
-    if remotes.iter().any(|r| r.name == "origin") {
-        return Err(AppError::simple(
-            "REMOTE_EXISTS",
-            "'origin' remote'u zaten tanımlı. Bu depo yayınlanmış sayılır — gönderim için Dışa Aktar (Push) kullanın.",
-            false,
-        ));
-    }
+        // 1. Fail fast BEFORE creating anything on GitHub.
+        let record = RepositoryService::get_repository(&db, &repo_id).map_err(AppError::from)?;
+        let path = std::path::Path::new(&record.canonical_path);
+        let remotes = GitRemoteManager::list_remotes(path).map_err(AppError::from)?;
+        if remotes.iter().any(|r| r.name == "origin") {
+            return Err(AppError::simple(
+                "REMOTE_EXISTS",
+                "'origin' remote'u zaten tanımlı. Bu depo yayınlanmış sayılır — gönderim için Dışa Aktar (Push) kullanın.",
+                false,
+            ));
+        }
 
-    // 2. Create the repository on GitHub.
-    let created = state
-        .github
-        .create_remote_repo(
+        // 2. Create the repository on GitHub.
+        let created = state
+            .github
+            .create_remote_repo(
+                &db,
+                &account_id,
+                &name,
+                description.as_deref(),
+                private.unwrap_or(false),
+            )
+            .map_err(AppError::from)?;
+
+        // 3. Wire origin. If this fails the GitHub repo still exists — surface both facts.
+        // Hesap için SSH host alias tanımlıysa (ssh_hosts.toml) SSH adresi tercih edilir.
+        let remote_url = created
+            .ssh_remote
+            .as_deref()
+            .unwrap_or(created.clone_url.as_str());
+        if let Err(e) = GitRemoteManager::add(path, "origin", remote_url) {
+            return Err(AppError::from(CommandError::new(
+                "PUBLISH_PARTIAL",
+                format!(
+                    "GitHub deposu oluşturuldu ({}) ancak 'origin' eklenemedi: {}",
+                    created.html_url, e.message
+                ),
+                true,
+            )));
+        }
+
+        // 3.5. Depo commit kimliği = yayımlanan hesap: bundan sonraki commit'ler
+        // o hesapla oluşur; makinenin varsayılan e-postasıyla yazılmış mevcut
+        // commit'ler de bu hesaba çevrilir (remote yeni oluşturuldu — geçmiş için
+        // risk yok, push öncesi son fırsat).
+        let identity_note = state
+            .github
+            .git_identity(&db, &account_id)
+            .ok()
+            .and_then(|(name, email)| apply_repo_identity(&db, &repo_id, &name, &email, false, true));
+
+        // 4. Best-effort initial push (never forces). Hesabın token'ı ile:
+        // origin HTTPS ise kimlik doğrudan bu hesap olur; SSH ise config devrede.
+        let push_token = state.github.access_token(&db, &account_id).ok();
+        let (pushed, warning) = match RepositoryService::push(
             &db,
-            &account_id,
-            &name,
-            description.as_deref(),
-            private.unwrap_or(false),
-        )
-        .map_err(AppError::from)?;
-
-    // 3. Wire origin. If this fails the GitHub repo still exists — surface both facts.
-    // Hesap için SSH host alias tanımlıysa (ssh_hosts.toml) SSH adresi tercih edilir.
-    let remote_url = created
-        .ssh_remote
-        .as_deref()
-        .unwrap_or(created.clone_url.as_str());
-    if let Err(e) = GitRemoteManager::add(path, "origin", remote_url) {
-        return Err(AppError::from(CommandError::new(
-            "PUBLISH_PARTIAL",
-            format!(
-                "GitHub deposu oluşturuldu ({}) ancak 'origin' eklenemedi: {}",
-                created.html_url, e.message
-            ),
-            true,
-        )));
-    }
-
-    // 3.5. Depo commit kimliği = yayımlanan hesap: bundan sonraki commit'ler
-    // o hesapla oluşur; makinenin varsayılan e-postasıyla yazılmış mevcut
-    // commit'ler de bu hesaba çevrilir (remote yeni oluşturuldu — geçmiş için
-    // risk yok, push öncesi son fırsat).
-    let identity_note = state
-        .github
-        .git_identity(&db, &account_id)
-        .ok()
-        .and_then(|(name, email)| apply_repo_identity(&db, &repo_id, &name, &email, false, true));
-
-    // 4. Best-effort initial push (never forces). Hesabın token'ı ile:
-    // origin HTTPS ise kimlik doğrudan bu hesap olur; SSH ise config devrede.
-    let push_token = state.github.access_token(&db, &account_id).ok();
-    let (pushed, warning) = match RepositoryService::push(
-        &db,
-        &repo_id,
-        None,
-        None,
-        false,
-        true,
-        push_token.as_deref(),
-    ) {
-        Ok(_) => (true, identity_note),
-        Err(e) => (
+            &repo_id,
+            None,
+            None,
             false,
-            Some(match identity_note {
-                Some(note) => format!("{} — {}", e.message, note),
-                None => e.message,
-            }),
-        ),
-    };
+            true,
+            push_token.as_deref(),
+        ) {
+            Ok(_) => (true, identity_note),
+            Err(e) => (
+                false,
+                Some(match identity_note {
+                    Some(note) => format!("{} — {}", e.message, note),
+                    None => e.message,
+                }),
+            ),
+        };
 
-    Ok(GitHubPublishResult {
-        html_url: created.html_url,
-        clone_url: created.clone_url,
-        pushed,
-        warning,
-    })
+        Ok(GitHubPublishResult {
+            html_url: created.html_url,
+            clone_url: created.clone_url,
+            pushed,
+            warning,
+        })
+    }).await
 }
 
 // ---------------------------------------------------------------------------
@@ -883,108 +1029,185 @@ fn app_get_info() -> AppInfo {
 
 /// Reads persisted application settings.
 #[tauri::command]
-fn settings_get(state: State<AppState>) -> CmdResult<AppSettings> {
-    with_db(&state, SettingsService::get)
+async fn settings_get(app: AppHandle) -> CmdResult<AppSettings> {
+    offload(app, move |state| with_db(&state, SettingsService::get)).await
 }
 
 /// Validates and persists application settings.
 #[tauri::command]
-fn settings_update(state: State<AppState>, update: AppSettingsUpdate) -> CmdResult<AppSettings> {
-    with_db(&state, |db| SettingsService::update(db, update))
+async fn settings_update(app: AppHandle, update: AppSettingsUpdate) -> CmdResult<AppSettings> {
+    offload(app, move |state| {
+        with_db(&state, |db| SettingsService::update(db, update))
+    })
+    .await
 }
 
 /// Returns repository metadata plus best-effort status and remotes.
 #[tauri::command]
-fn repository_get_details(state: State<AppState>, repo_id: String) -> CmdResult<RepositoryDetails> {
-    with_db(&state, |db| {
-        RepositoryService::get_repository_details(db, &repo_id)
+async fn repository_get_details(app: AppHandle, repo_id: String) -> CmdResult<RepositoryDetails> {
+    offload(app, move |state| {
+        with_db(&state, |db| {
+            RepositoryService::get_repository_details(db, &repo_id)
+        })
     })
+    .await
 }
 
 /// Re-links an existing record to a moved repository directory.
 #[tauri::command]
-fn repository_relink(
-    state: State<AppState>,
+async fn repository_relink(
+    app: AppHandle,
     repo_id: String,
     new_path: String,
 ) -> CmdResult<RepositoryRecord> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::relink_repository(db, &repo_id, &new_path)
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::relink_repository(db, &repo_id, &new_path)
+        })
     })
+    .await
 }
 
 /// Clones a remote URL into an empty destination and registers the result.
 #[tauri::command]
-fn repository_clone(
-    state: State<AppState>,
+async fn repository_clone(
+    app: AppHandle,
     url: String,
     destination: String,
 ) -> CmdResult<CloneResult> {
-    let _lock = state
-        .locks
-        .try_acquire(destination.trim())
-        .map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::clone_repository(db, &url, &destination)
+    offload(app, move |state| {
+        // GO-09: kilit anahtarı kanonik yol olmalı — ham dize varyantları
+        // ("../x", çift slash, sonda '/') aynı hedef için farklı anahtar
+        // üretip eşzamanlı iki clone'a izin verebilirdi.
+        let key = canonical_clone_key(&destination);
+        let _lock = state.locks.try_acquire(&key).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::clone_repository(db, &url, &destination)
+        })
     })
+    .await
+}
+
+/// Kilit anahtarı için hedef yolu kanonikleştirir. Hedef henüz yoksa (clone
+/// için normal) mevcut en yakın atayı kanonikleştirip kalan bileşenleri ekler;
+/// hiçbiri çözülemezse kırpılmış ham dizeye düşer.
+fn canonical_clone_key(destination: &str) -> String {
+    use std::path::{Component, Path, PathBuf};
+    let raw = Path::new(destination.trim());
+    if let Ok(canon) = raw.canonicalize() {
+        return canon.to_string_lossy().into_owned();
+    }
+    // Yok olan bileşenleri geriye doğru biriktir.
+    let mut missing: Vec<std::ffi::OsString> = Vec::new();
+    let mut ancestor = raw;
+    loop {
+        if let Ok(canon) = ancestor.canonicalize() {
+            let mut joined = canon;
+            for name in missing.iter().rev() {
+                joined = joined.join(name);
+            }
+            return joined.to_string_lossy().into_owned();
+        }
+        match ancestor.file_name() {
+            Some(name) => {
+                missing.push(name.to_os_string());
+                match ancestor.parent() {
+                    Some(p) if !p.as_os_str().is_empty() => ancestor = p,
+                    _ => break,
+                }
+            }
+            None => break,
+        }
+    }
+    // En kötü durum: hiçbiri çözülemedi — en azından normalize et.
+    let mut norm = PathBuf::new();
+    for c in raw.components() {
+        match c {
+            Component::ParentDir => {
+                if !norm.pop() {
+                    norm.push("..");
+                }
+            }
+            Component::CurDir => {}
+            other => norm.push(other.as_os_str()),
+        }
+    }
+    let s = norm.to_string_lossy().into_owned();
+    if s.is_empty() {
+        destination.trim().to_string()
+    } else {
+        s
+    }
 }
 
 /// Safely merges `branch` into the active branch.
 #[tauri::command]
-fn repository_merge_branch(
-    state: State<AppState>,
+async fn repository_merge_branch(
+    app: AppHandle,
     repo_id: String,
     branch: String,
 ) -> CmdResult<GitStatus> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::merge_branch(db, &repo_id, &branch)
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::merge_branch(db, &repo_id, &branch)
+        })
     })
+    .await
 }
 
 /// Continues an in-progress merge/rebase/cherry-pick/revert.
 #[tauri::command]
-fn repository_continue_operation(state: State<AppState>, repo_id: String) -> CmdResult<GitStatus> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::continue_operation(db, &repo_id)
+async fn repository_continue_operation(app: AppHandle, repo_id: String) -> CmdResult<GitStatus> {
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::continue_operation(db, &repo_id)
+        })
     })
+    .await
 }
 
 /// Aborts an in-progress operation. The UI MUST ask for explicit confirmation.
 #[tauri::command]
-fn repository_abort_operation(state: State<AppState>, repo_id: String) -> CmdResult<GitStatus> {
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::abort_operation(db, &repo_id)
+async fn repository_abort_operation(app: AppHandle, repo_id: String) -> CmdResult<GitStatus> {
+    offload(app, move |state| {
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::abort_operation(db, &repo_id)
+        })
     })
+    .await
 }
 
 /// v0.2 — çakışmalı bir dosyayı seçilen tarafla çözer ("ours" | "theirs")
 /// ve stage'ler. Yalnızca devam eden bir işlem varsa çalışır.
 #[tauri::command]
-fn repository_resolve_conflict(
-    state: State<AppState>,
+async fn repository_resolve_conflict(
+    app: AppHandle,
     repo_id: String,
     path: String,
     side: String,
 ) -> CmdResult<GitStatus> {
-    let ours = match side.as_str() {
-        "ours" => true,
-        "theirs" => false,
-        _ => {
-            return Err(AppError::simple(
-                "VALIDATION_ERROR",
-                "Geçersiz taraf: ours veya theirs olmalı.",
-                true,
-            ));
-        }
-    };
-    let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-    with_db(&state, |db| {
-        RepositoryService::resolve_conflict(db, &repo_id, &path, ours)
+    offload(app, move |state| {
+        let ours = match side.as_str() {
+            "ours" => true,
+            "theirs" => false,
+            _ => {
+                return Err(AppError::simple(
+                    "VALIDATION_ERROR",
+                    "Geçersiz taraf: ours veya theirs olmalı.",
+                    true,
+                ));
+            }
+        };
+        let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
+        with_db(&state, |db| {
+            RepositoryService::resolve_conflict(db, &repo_id, &path, ours)
+        })
     })
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -1020,9 +1243,7 @@ fn run_sync_round(state: &State<AppState>, kind: SyncKind) -> Vec<RepoSyncOutcom
             if !repo.missing {
                 let path = std::path::Path::new(&repo.canonical_path);
                 match GitRemoteManager::list_remotes(path) {
-                    Ok(remotes) => {
-                        input.has_origin = remotes.iter().any(|r| r.name == "origin")
-                    }
+                    Ok(remotes) => input.has_origin = remotes.iter().any(|r| r.name == "origin"),
                     Err(_) => input.status_error = true,
                 }
                 match RepositoryService::get_repository_status(db, &repo.id) {
@@ -1167,39 +1388,48 @@ fn sync_cancel_all(state: State<AppState>) -> bool {
 
 /// Reads full details (files and line stats) for a commit.
 #[tauri::command]
-fn repository_get_commit_details(
-    state: State<AppState>,
+async fn repository_get_commit_details(
+    app: AppHandle,
     repo_id: String,
     sha: String,
 ) -> CmdResult<CommitDetails> {
-    with_db(&state, |db| {
-        RepositoryService::get_commit_details(db, &repo_id, &sha)
+    offload(app, move |state| {
+        with_db(&state, |db| {
+            RepositoryService::get_commit_details(db, &repo_id, &sha)
+        })
     })
+    .await
 }
 
 /// Reads the unified diff of a commit.
 #[tauri::command]
-fn repository_get_commit_diff(
-    state: State<AppState>,
+async fn repository_get_commit_diff(
+    app: AppHandle,
     repo_id: String,
     sha: String,
 ) -> CmdResult<DiffOutput> {
-    with_db(&state, |db| {
-        RepositoryService::get_commit_diff(db, &repo_id, &sha)
+    offload(app, move |state| {
+        with_db(&state, |db| {
+            RepositoryService::get_commit_diff(db, &repo_id, &sha)
+        })
     })
+    .await
 }
 
 /// Compares two branches (ahead/behind and commits unique to `head`).
 #[tauri::command]
-fn repository_compare_branches(
-    state: State<AppState>,
+async fn repository_compare_branches(
+    app: AppHandle,
     repo_id: String,
     base: String,
     head: String,
 ) -> CmdResult<BranchComparison> {
-    with_db(&state, |db| {
-        RepositoryService::compare_branches(db, &repo_id, &base, &head)
+    offload(app, move |state| {
+        with_db(&state, |db| {
+            RepositoryService::compare_branches(db, &repo_id, &base, &head)
+        })
     })
+    .await
 }
 
 /// Reveals a repository path in the OS file manager.

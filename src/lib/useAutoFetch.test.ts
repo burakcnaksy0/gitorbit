@@ -106,8 +106,8 @@ describe("useAutoFetch", () => {
 
     await result.current.runNow();
 
-    expect(repositoryFetch).toHaveBeenCalledWith("bad");
-    expect(repositoryFetch).toHaveBeenCalledWith("good");
+    expect(repositoryFetch).toHaveBeenCalledWith("bad", null, true);
+    expect(repositoryFetch).toHaveBeenCalledWith("good", null, true);
     expect(repositoryFetch).not.toHaveBeenCalledWith("gone"); // missing atlanır
     expect(onStatus).toHaveBeenCalledTimes(1);
     expect(onStatus).toHaveBeenCalledWith("good", statusFor("good"));

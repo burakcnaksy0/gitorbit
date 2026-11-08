@@ -53,7 +53,7 @@ export function useAutoFetch({
     busyRef.current = true;
     try {
       const results = await Promise.allSettled(
-        targets.map((repo) => repositoryFetch(repo.id))
+        targets.map((repo) => repositoryFetch(repo.id, null, true))
       );
       results.forEach((result, index) => {
         if (result.status === "fulfilled") {
