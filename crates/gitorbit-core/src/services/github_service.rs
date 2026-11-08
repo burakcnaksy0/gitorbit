@@ -292,13 +292,27 @@ fn map_ureq_error(e: ureq::Error) -> CommandError {
     }
 }
 
+/// v0.2.1: ureq v2 varsayılan olarak timeoutsuzdur — captive portal / düşen
+/// TCP bağlantısında çağıran komut iş parçacığı SONSUZ dek bloklanırdı.
+/// Ortak agent: 10 sn bağlanma, 30 sn toplam işlem sınırı.
+fn http_agent() -> &'static ureq::Agent {
+    use std::sync::OnceLock;
+    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+    AGENT.get_or_init(|| {
+        ureq::AgentBuilder::new()
+            .timeout_connect(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .build()
+    })
+}
+
 impl GitHubHttpClient for RealGitHubHttpClient {
     fn begin_device_flow(
         &self,
         client_id: &str,
         scope: &str,
     ) -> Result<RawDeviceFlowResponse, CommandError> {
-        let resp = ureq::post("https://github.com/login/device/code")
+        let resp = http_agent().post("https://github.com/login/device/code")
             .set("Accept", "application/json")
             .set("User-Agent", "GitOrbit/0.1")
             .send_form(&[("client_id", client_id), ("scope", scope)])
@@ -314,7 +328,7 @@ impl GitHubHttpClient for RealGitHubHttpClient {
         client_id: &str,
         device_code: &str,
     ) -> Result<RawPollResponse, CommandError> {
-        let resp = ureq::post("https://github.com/login/oauth/access_token")
+        let resp = http_agent().post("https://github.com/login/oauth/access_token")
             .set("Accept", "application/json")
             .set("User-Agent", "GitOrbit/0.1")
             .send_form(&[
@@ -334,7 +348,7 @@ impl GitHubHttpClient for RealGitHubHttpClient {
         client_id: &str,
         refresh_token: &str,
     ) -> Result<RawRefreshResponse, CommandError> {
-        let resp = ureq::post("https://github.com/login/oauth/access_token")
+        let resp = http_agent().post("https://github.com/login/oauth/access_token")
             .set("Accept", "application/json")
             .set("User-Agent", "GitOrbit/0.1")
             .send_form(&[
@@ -350,7 +364,7 @@ impl GitHubHttpClient for RealGitHubHttpClient {
     }
 
     fn get_authenticated_user(&self, token: &str) -> Result<RawUserResponse, CommandError> {
-        let resp = ureq::get("https://api.github.com/user")
+        let resp = http_agent().get("https://api.github.com/user")
             .set("Authorization", &format!("Bearer {}", token))
             .set("Accept", "application/vnd.github+json")
             .set("X-GitHub-Api-Version", "2022-11-28")
@@ -373,7 +387,7 @@ impl GitHubHttpClient for RealGitHubHttpClient {
             "https://api.github.com/user/repos?page={}&per_page={}&sort=updated&affiliation=owner,collaborator,organization_member",
             page, per_page
         );
-        let resp = ureq::get(&url)
+        let resp = http_agent().get(&url)
             .set("Authorization", &format!("Bearer {}", token))
             .set("Accept", "application/vnd.github+json")
             .set("X-GitHub-Api-Version", "2022-11-28")
@@ -401,7 +415,7 @@ impl GitHubHttpClient for RealGitHubHttpClient {
             "has_wiki": false,
         });
 
-        let resp = ureq::post("https://api.github.com/user/repos")
+        let resp = http_agent().post("https://api.github.com/user/repos")
             .set("Authorization", &format!("Bearer {}", token))
             .set("Accept", "application/vnd.github+json")
             .set("X-GitHub-Api-Version", "2022-11-28")

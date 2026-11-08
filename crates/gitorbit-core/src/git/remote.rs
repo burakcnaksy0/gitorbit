@@ -118,6 +118,31 @@ impl GitRemoteManager {
             ));
         }
 
+        // GO-06: URL'e gömülü kimlik bilgileri (PAT/token) `.git/config`'e
+        // yazılır ve `list_remotes` ile arayüze döner — "token diske/config'e
+        // ASLA yazılmaz" ilkesi clone'dan sonra remote add için de geçerli.
+        // ssh://kullanici@host serbest (o bir kullanıcı adı, sır değil);
+        // ssh://içinde bile ':' varsa (user:pass) reddedilir.
+        if let Some(pos) = url.find("://") {
+            let scheme = &url[..pos];
+            let authority_end = url[pos + 3..]
+                .find('/')
+                .map(|i| pos + 3 + i)
+                .unwrap_or(url.len());
+            let authority = &url[pos + 3..authority_end];
+            if let Some(at) = authority.rfind('@') {
+                let userinfo = &authority[..at];
+                let reject = scheme != "ssh" || userinfo.contains(':');
+                if reject {
+                    return Err(CommandError::invalid_path(
+                        "Remote adresine gömülü kullanıcı adı/parola/token kabul edilmiyor. \
+                         Kimlik bilgileri GitOrbit tarafından geçici olarak enjekte edilir; \
+                         URL'i kimlik bilgisi olmadan girin.",
+                    ));
+                }
+            }
+        }
+
         let existing = Self::list_remotes(repo_dir)?;
         if existing.iter().any(|r| r.name == name) {
             return Err(CommandError::new(
@@ -174,7 +199,7 @@ impl GitRemoteManager {
         let output = GitAdapter::execute_with_env_and_timeout(
             repo_dir,
             &args,
-            &[("GIT_TERMINAL_PROMPT", "0")],
+            &[("GIT_TERMINAL_PROMPT", "0"), ("GIT_ASKPASS", "echo")],
             Some(Duration::from_secs(30)),
         )?;
 
@@ -235,7 +260,7 @@ impl GitRemoteManager {
         let output = GitAdapter::execute_with_env_and_timeout(
             repo_dir,
             &args,
-            &[("GIT_TERMINAL_PROMPT", "0")],
+            &[("GIT_TERMINAL_PROMPT", "0"), ("GIT_ASKPASS", "echo")],
             Some(Duration::from_secs(45)),
         )?;
 
@@ -367,7 +392,8 @@ impl GitRemoteManager {
         // olarak enjekte edilir (süreç ortamında yaşar; diske, URL'e veya
         // config'e ASLA yazılmaz). SSH remote'larında injection gerekmez —
         // ~/.ssh/config kimliği kullanılır.
-        let mut envs: Vec<(&str, &str)> = vec![("GIT_TERMINAL_PROMPT", "0")];
+        let mut envs: Vec<(&str, &str)> =
+            vec![("GIT_TERMINAL_PROMPT", "0"), ("GIT_ASKPASS", "echo")];
         if let Some(token) = access_token.filter(|t| !t.is_empty()) {
             let is_https = Self::list_remotes(repo_dir)
                 .ok()

@@ -15,6 +15,8 @@ ureq = { version = "2", features = ["json"] }
 keyring = "2"
 # UUID v4 for account IDs and session tokens
 uuid = { version = "1", features = ["v4"] }
+# Süreç grubu öldürme (unix killpg) — zaman aşımında git çocuklarını da temizle
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3.17"

@@ -183,8 +183,23 @@ pub fn redact_sensitive(input: &str) -> String {
 
         if let Some(at) = authority.rfind('@') {
             let userinfo = &authority[..at];
-            // Only redact when it looks like credentials, not a plain SSH user.
-            if userinfo.contains(':') || userinfo.to_ascii_lowercase().contains("token") {
+            // GO-06c: şema kontrolü — ssh:// dışındaki URL'lerde userinfo'nın
+            // tamamı kimlik bilgisidir (PAT gömülü https://ghp_xxx@github.com
+            // gibi) ve her halükarda maskelenir. ssh:// düz kullanıcı adını
+            // korur (git@host), ama ':' varsa (user:pass) o da maskelenir.
+            let scheme_is_ssh = {
+                let lower = output.to_ascii_lowercase();
+                lower.rfind("://").map(|s| {
+                    let scheme_start = lower[..s]
+                        .rfind(|c: char| {
+                            !(c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.')
+                        })
+                        .map(|i| i + 1)
+                        .unwrap_or(0);
+                    &lower[scheme_start..s] == "ssh"
+                }) == Some(true)
+            };
+            if userinfo.contains(':') || !scheme_is_ssh {
                 output.push_str("***@");
             } else {
                 output.push_str(userinfo);
@@ -198,7 +213,49 @@ pub fn redact_sensitive(input: &str) -> String {
     }
     output.push_str(rest);
 
-    redact_key_values(&output)
+    let output = redact_key_values(&output);
+    scrub_token_shapes(&output)
+}
+
+/// GO-06c: GitHub token BİÇİMLERİNİ (gh[pousr]_..., github_pat_...) metnin
+/// neresinde olurlarsa olsunlar temizler. Bazı git/HTTP hata gövdeleri token'ı
+/// key=value yapılarında değil serbest halde basar; bu son savunma katmanıdır.
+fn scrub_token_shapes(input: &str) -> String {
+    const TOKEN_PREFIXES: [&str; 6] = ["ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_"];
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(input.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let matched = TOKEN_PREFIXES.iter().find(|p| {
+            let pb = p.as_bytes();
+            if i + pb.len() > bytes.len() || &bytes[i..i + pb.len()] != pb {
+                return false;
+            }
+            // gövde en az 16 alfanümerik karakter: "ghp_" ile başlayan normal
+            // kelimelerde yanlış-pozitif üretmemek için
+            let mut n = 0;
+            let mut j = i + pb.len();
+            while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
+                n += 1;
+                j += 1;
+            }
+            n >= 16
+        });
+        if let Some(p) = matched {
+            out.push_str("***");
+            i += p.len();
+            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                i += 1;
+            }
+        } else {
+            // ASCII ön ekler yalnızca karakter sınırında eşleşebilir; UTF-8
+            // sınırına saygılı tek karakter kopyalama
+            let ch = input[i..].chars().next().unwrap();
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+    }
+    out
 }
 
 fn redact_key_values(input: &str) -> String {
@@ -310,5 +367,31 @@ mod tests {
         assert!(!err.message.contains("ghp_secret"));
         assert!(!err.correlation_id.is_empty());
         assert!(err.retryable);
+    }
+
+    #[test]
+    fn redacts_pat_embedded_as_https_userinfo() {
+        // GO-06c: ':' İÇERMEYEN userinfo (doğrudan PAT) de maskelenmeli
+        let redacted = redact_sensitive("fatal: access to https://ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12@github.com/org/repo.git denied");
+        assert!(!redacted.contains("ghp_ABCDEFGHIJ"));
+        assert!(redacted.contains("https://***@github.com"));
+        // ssh:// düz kullanıcı adı korunur
+        let ssh = "ssh://git@github.com/org/repo.git";
+        assert_eq!(redact_sensitive(ssh), ssh);
+        // ssh:// içinde user:pass varsa o maskelenir
+        let ssh_pass = redact_sensitive("ssh://bob:hunter2@github.com/org/repo.git");
+        assert!(!ssh_pass.contains("hunter2"));
+    }
+
+    #[test]
+    fn scrubs_bare_token_shapes() {
+        // GO-06c: key=value yapısı dışında basılmış token'lar
+        let msg = "remote: invalid token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12 supplied";
+        let redacted = redact_sensitive(msg);
+        assert!(!redacted.contains("ghp_ABCDEFGHIJ"));
+        assert!(redacted.contains("***"));
+
+        let fine = "ghu_short not a real token body here";
+        assert_eq!(redact_sensitive(fine), fine);
     }
 }

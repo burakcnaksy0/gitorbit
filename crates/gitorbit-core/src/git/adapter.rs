@@ -200,20 +200,57 @@ impl GitAdapter {
                 .map_err(|e| CommandError::io_error(format!("Git komutu yürütülemedi: {}", e)));
         };
 
+        // Zaman aşımlı yol: süreç kendi grubuna başlatılır (unix) ki öldürme
+        // anında git'in çocukları (git-remote-https, hook kabukları) da
+        // temizlensin — tek child.kill() yetim süreç bırakıyordu.
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            cmd.process_group(0);
+        }
+
         let mut child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| CommandError::io_error(format!("Git komutu yürütülemedi: {}", e)))?;
+        let child_pid = child.id();
+
+        // KRİTİK: pipe'lar okuyucu iş parçacıklarıyla sürekli boşaltılır.
+        // Beklerken okumamak, ~64 KB OS pipe tamponunu aşan çıktıda (büyük
+        // merge/commit hook çıktısı) git'i write(2) içinde bloklar ve sağlıklı
+        // işlem zaman aşımıyla öldürülürdü.
+        let stdout_reader = child.stdout.take().map(|mut out| {
+            std::thread::spawn(move || {
+                let mut buf = Vec::new();
+                let _ = out.read_to_end(&mut buf);
+                buf
+            })
+        });
+        let stderr_reader = child.stderr.take().map(|mut err| {
+            std::thread::spawn(move || {
+                let mut buf = Vec::new();
+                let _ = err.read_to_end(&mut buf);
+                buf
+            })
+        });
 
         let start = Instant::now();
-        loop {
+        let status = loop {
             match child.try_wait() {
-                Ok(Some(_)) => break,
+                Ok(Some(status)) => break status,
                 Ok(None) => {
                     if start.elapsed() >= timeout {
+                        Self::kill_process_group(child_pid);
                         let _ = child.kill();
                         let _ = child.wait();
+                        // Okuyucular EOF ile kısa sürede döner.
+                        if let Some(h) = stdout_reader {
+                            let _ = h.join();
+                        }
+                        if let Some(h) = stderr_reader {
+                            let _ = h.join();
+                        }
                         return Err(CommandError::new(
                             "TIMEOUT",
                             format!(
@@ -232,25 +269,111 @@ impl GitAdapter {
                     )));
                 }
             }
-        }
+        };
 
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
-        if let Some(mut out) = child.stdout.take() {
-            let _ = out.read_to_end(&mut stdout);
-        }
-        if let Some(mut err) = child.stderr.take() {
-            let _ = err.read_to_end(&mut stderr);
-        }
-
-        let status = child
-            .wait()
-            .map_err(|e| CommandError::io_error(format!("Git süreci beklenirken hata: {}", e)))?;
+        // Süreç bitti; tamponlar EOF'a ulaştı — okuyucuları katıştır.
+        let stdout = stdout_reader
+            .map(|h| h.join().unwrap_or_default())
+            .unwrap_or_default();
+        let stderr = stderr_reader
+            .map(|h| h.join().unwrap_or_default())
+            .unwrap_or_default();
 
         Ok(std::process::Output {
             status,
             stdout,
             stderr,
         })
+    }
+
+    /// Unix'te tüm süreç grubunu (negatif PID) SIGKILL ile dağıtır.
+    /// process_group(0) ile çocuk grup lideri olmuştur: pgid == pid.
+    /// Windows'ta yalnızca doğrudan çocuk öldürülür (Job Object kapsam dışı).
+    #[cfg(unix)]
+    fn kill_process_group(pid: u32) {
+        unsafe {
+            libc::kill(-(pid as libc::pid_t), libc::SIGKILL);
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn kill_process_group(_pid: u32) {}
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn large_output_does_not_false_timeout() {
+        // GO-01c regresyon: ~64 KB OS pipe tamponunu aşan çıktı, beklerken
+        // okunmazsa git write(2) içinde bloklanır ve sağlıklı işlem TIMEOUT
+        // ile öldürülürdü. Okuyucu iş parçacıkları tamponu boşaltmalı.
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c")
+            .arg("head -c 300000 /dev/zero | tr '\\0' 'x'")
+            .current_dir(std::env::temp_dir());
+        let out = GitAdapter::run_cmd(cmd, Some(Duration::from_secs(10))).expect("timeout olmamalı");
+        assert!(out.status.success());
+        assert_eq!(out.stdout.len(), 300000);
+    }
+
+    #[test]
+    fn timeout_kills_process_group_including_children() {
+        // GO-01c regresyon: zaman aşımında yalnızca doğrudan çocuk değil,
+        // süreç grubunun tamamı (torun süreçler dahil) temizlenmeli.
+        // `(sleep) &` torun üretir; grup öldürülmezse yetim kalır ve PPID'i
+        // 1/2'ye (systemd/init) taşınır — /proc'tan ayırt edilir.
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c")
+            .arg("( sleep 27 & ) ; sleep 30")
+            .current_dir(std::env::temp_dir());
+        let start = Instant::now();
+        let err = GitAdapter::run_cmd(cmd, Some(Duration::from_millis(400)))
+            .expect_err("TIMEOUT bekleniyor");
+        assert_eq!(err.code, "TIMEOUT");
+        assert!(start.elapsed() < Duration::from_secs(5));
+
+        // Öldürme + reparent için kısa fırsat ver.
+        std::thread::sleep(Duration::from_millis(300));
+        let orphans = orphan_sleeps();
+        assert!(
+            orphans.is_empty(),
+            "zaman aşımı sonrası yetim sleep süreçleri kaldı: {orphans:?}"
+        );
+    }
+
+    /// `sleep 2x` çalıştıran ve PPID'i 1 veya 2 olan (yani yetim kalmış)
+    /// süreçlerin PID listesi.
+    fn orphan_sleeps() -> Vec<u32> {
+        let mut v = Vec::new();
+        let Ok(entries) = std::fs::read_dir("/proc") else {
+            return v;
+        };
+        for e in entries.flatten() {
+            let name = e.file_name();
+            let Some(pid): Option<u32> = name.to_string_lossy().parse().ok() else {
+                continue;
+            };
+            let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+                continue;
+            };
+            // biçim: pid (comm) state ppid ...
+            let Some(rest) = stat.rfind(')').map(|i| &stat[i + 1..]) else {
+                continue;
+            };
+            let fields: Vec<&str> = rest.split_whitespace().collect();
+            let (Some(state), Some(ppid)) = (fields.first(), fields.get(1)) else {
+                continue;
+            };
+            let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
+                continue;
+            };
+            let cmdline = String::from_utf8_lossy(&cmdline).replace('\0', " ");
+            if cmdline.contains("sleep 27") && *state != "Z" && (*ppid == "1" || *ppid == "2") {
+                v.push(pid);
+            }
+        }
+        v
     }
 }

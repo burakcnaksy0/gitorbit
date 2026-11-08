@@ -473,4 +473,29 @@ fn test_add_remote_success_duplicate_and_invalid_url() {
     assert!(GitRemoteManager::add(dir.path(), "evil", "--upload-pack=bad").is_err());
     assert!(GitRemoteManager::add(dir.path(), "ftp", "ftp://example.com/x.git").is_err());
     assert!(GitRemoteManager::add(dir.path(), "space", "https://a b/c.git").is_err());
+
+    // GO-06: URL'e gömülü kimlik bilgileri reddedilir — `.git/config`'e
+    // yazılır ve list_remotes ile arayüze sızardı.
+    let err = GitRemoteManager::add(
+        dir.path(),
+        "tok",
+        "https://ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12@github.com/user/r.git",
+    )
+    .expect_err("gömülü token reddedilmeli");
+    assert_eq!(err.code, "INVALID_PATH");
+    assert!(GitRemoteManager::add(
+        dir.path(),
+        "up",
+        "https://user:pass@github.com/user/r.git"
+    )
+    .is_err());
+    // ssh:// düz kullanıcı adı SERBEST (o kimlik değil, hedef kullanıcısı)
+    assert!(GitRemoteManager::add(dir.path(), "sshok", "ssh://git@github.com/user/r.git").is_ok());
+    // ssh:// içinde user:pass yine reddedilir
+    assert!(GitRemoteManager::add(dir.path(), "sshx", "ssh://bob:pass@github.com/user/r.git")
+        .is_err());
+    // git@ scp biçimi serbest (kullanıcı adı "git", sır değil)
+    assert!(
+        GitRemoteManager::add(dir.path(), "scpos", "git@github.com:user/scpos.git").is_ok()
+    );
 }
