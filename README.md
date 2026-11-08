@@ -1,169 +1,326 @@
-# GitOrbit — Developer Workspace (v0.1.0 RC)
+# GitOrbit — Developer Workspace
 
-GitOrbit, yerel Git geliştirme süreçleri ile GitHub hesap yönetimini tek bir modern, hızlı ve güvenli masaüstü uygulamasında birleştiren açık kaynaklı bir **Developer Workspace** ürünüdür.
+> Yerel Git iş akışlarını ve GitHub hesap yönetimini, hiçbir verini dışarıda
+> bırakmadan tek pencerede toplayan, açık kaynaklı masaüstü uygulaması.
+>
+> **Durum:** v0.2.1 + güvenlik/performans denetimi sertleştirmesi · **Lisans:** MIT ·
+> **Platformlar:** Linux · macOS · Windows
 
-Masaüstü kabuğu olarak **Tauri 2**, kullanıcı arayüzü için **React 19**, **TypeScript** ve **Tailwind CSS v4**, çekirdek Git ve sistem işlemleri için **Rust** (`gitorbit-core`) kullanılmaktadır.
+GitOrbit bir "git GUI'si"nden fazlasını hedefler: çok depolu bir **çalışma
+alanı**. Depolarını tanımlarsın; GitOrbit arka planda uzaktan gelen
+değişiklikleri izler, rozetlerle bildirir, sen de commit → branch → merge →
+push zincirini terminal açmadan yürütürsün. Uygulama tamamen yereldir:
+hesap zorunluluğu yok, telemetri yok, bulut hesabı yok — GitHub entegrasyonu
+tamamen isteğe bağlıdır.
 
----
-
-## 🚀 Öne Çıkan Yetenekler
-
-- **Yerel Git Durum Motoru:** Makine tarafından okunabilir (`\0`) çıktı ayrıştırma, dosya değişiklikleri, hızlı indeksleme ve çakışma tespiti.
-- **Gelişmiş Staging & Diff:** Satır düzeyinde renklendirilmiş Unified Diff önizleme, güvenli değişiklik iptali (`discard`), büyük dosya budama koruması ve ikili dosya ayrımı.
-- **Commit & Kimlik Koruması:** Git Identity Guard (isim/e-posta eksikliğinde commit engelleme), sayfalı geçmiş ve dal bazlı arama.
-- **Dal (Branch) Yönetimi:** Yerel ve uzak dallar hiyerarşisi, tek tıkla checkout, güvenli birleştirilmemiş dal silme kontrolleri.
-- **Uzak Depo & Senkronizasyon:** Push, Fetch, Pull işlemleri, non-fast-forward push'larda veri kaybını önleyici otomatik force yasağı.
-- **Güvenli GitHub Entegrasyonu:** Zero-Token Storage (OAuth belirteçleri yalnızca işletim sistemi Keyring'inde saklanır), Device Flow yetkilendirme, hesap yönetimi ve sayfalı repo listeleme.
-- **Sertleştirilmiş Erişilebilirlik & CI:** Klavye navigasyonu (WCAG standartları, Esc ile modal kapatma), 40+ Rust kabul testi, 38 Frontend birim/E2E testi, multi-platform CI (Linux, macOS, Windows).
-
----
-
-## 🛠️ Teknoloji Yığını
-
-| Katman                | Teknoloji              | Açıklama                                                      |
-| --------------------- | ---------------------- | ------------------------------------------------------------- |
-| **Masaüstü Kabuğu**   | Tauri 2                | Düşük bellek tüketimli, native pencere ve güvenli IPC köprüsü |
-| **Kullanıcı Arayüzü** | React 19 + TypeScript  | Reaktif bileşen mimarisi ve tam tip güvenliği                 |
-| **Stil Sistemi**      | Tailwind CSS v4        | HSL tabanlı koyu/açık modern tasarım sistemi ve tokenler      |
-| **Çekirdek Sistem**   | Rust (`gitorbit-core`) | Git CLI subprocess yönetimi, SQLite kataloğu, OS Keyring      |
-| **Paketleme & Test**  | Vite 8 + Vitest 5      | Hızlı geliştirme ortamı, birim/bileşen ve E2E test koşucu     |
+Masaüstü kabuğu **Tauri 2**, arayüz **React 19 + TypeScript + Tailwind CSS v4**,
+Git/sistem çekirdeği **Rust** (`gitorbit-core`). Git işlemleri `libgit2`
+bağımlılığı olmadan, sistem `git`'inin makine-okunur çıktısı (`--porcelain=v2`,
+`-z`) ayrıştırılarak yapılır — yani GitOrbit, komut satırındaki Git'in
+görsel bir uzantısıdır; sihirli bir paralel dünya değil.
 
 ---
 
-## 💻 Desteklenen İşletim Sistemleri
+## 🗺️ Neler Yapıyor? (Özellik Haritası)
 
-- **Linux:** Ubuntu 22.04 LTS+, Debian 12+, Fedora 38+ (x86_64, aarch64)
-- **macOS:** macOS 12 Monterey veya üzeri (Apple Silicon & Intel)
-- **Windows:** Windows 10 (Build 19041+) veya Windows 11 (64-bit)
+### Genel Bakış ve Depolar
+- **Çok depolu katalog:** SQLite tabanlı depo dizini; klasör sürükle-bırak ile
+  ekleme, eksik klasör tespiti (relink), yol çakışması kontrolü.
+- **Sabitleme (pin) + arama/filtre:** Sabitlenen depo listenin en üstünde;
+  arama isim/yol/dal üzerinde çalışır, ikisi birlikte geçerli.
+- **Klasör sürükle-bırak:** Düz klasörü pencereye bırakınca "depo olarak
+  aç / başlat / GitHub'da yayınla" seçenekleri çıkar.
+- **İlk çalışma rehberi:** Boş kurulumda 3 adımlık onboarding (GitHub bağla →
+  depo aç → ilk işlem); gerçek hesaptan/depo listesinden okunan durum tikleri.
+
+### Değişiklikler (Changes)
+- **Tek çağrılı status motoru:** `git status --porcelain=v2 --branch -z` —
+  dosyalar, dal, upstream ve ahead/behind tek subprocess'te gelir; rename ve
+  boşluklu yollar byte-ofsetli ayrıştırıcıyla birebir doğru.
+- **Satır düzeyi diff görüntüleyici:** renkli unified diff, ikili dosya ve
+  512 KB üstü dev diff'ler için saydam "kırpıldı" rozeti (çıktı belleğe
+  sınırla alınır; RAM patlamaz).
+- **Stage / unstage / discard:** discard ikinci bir onay ister ve depoyu
+  son bir kez daha tarar (arada başka bir şey değiştiyse işlem durur).
+- **Yoksay (ignore):** untracked satırdan tek tıkla `.gitignore` (versiyonlu)
+  veya `.git/info/exclude` (yalnız bu makine). Desen köke sabitlenir,
+  yazıldıktan sonra `git check-ignore` ile gerçekten etkili olduğu doğrulanır;
+  linked worktree ve alt modül dizinlerinde doğru `--git-common-dir` hedefine
+  yazar.
+- **Stash merkezi:** açıklamalı stash, untracked dahil etme; girdi başına
+  Pop / Apply / onaylı Sil. Çakışma çıkarsa **stash silinmez** — geri
+  alınabilir durum korunur.
+- **Çakışma yardımcı bandı:** merge/rebase çakışmasında X/Y ilerleme sayacı,
+  dosya başına "Bizimki / THEIRS / Editörde çöz" eylemleri, iki adımlı
+  onaylı "İptal Et".
+
+### Geçmiş (History)
+- **Commit grafiği:** lane hesabı çekirdekte saf fonksiyon; merge/octopus
+  kavşakları SVG şeritlerle, renkler SHA'dan türeyen kararlı palet.
+- **Dal/tag rozetleri**, tıklanabilir ebeveyn SHA'ları, sayfalı liste.
+- **Kontrollü amend:** yalnızca en son ve **henüz push edilmemiş** commit'in
+  mesajı düzenlenebilir (push edilmişse `AMEND_PUSHED` ile reddedilir);
+  commit mesajı ANSI/kontrol karakteri kapısından geçer.
+
+### Dallar (Branches)
+- Yerel/uzak dal hiyerarşisi, tek tık checkout/create/delete/merge,
+  unmerged dal silmede zorlama ayrımı, abort/rebase durumunun dizin
+  meta verisinden tespiti (stderr tahmini değil).
+- Kirli çalışma ağacında checkout **veri kaybı korumasıyla** durur; kullanıcı
+  ne olduğunu ve seçeneklerini görür.
+
+### GitHub
+- **OAuth Device Flow (RFC 8628):** tarayıcı + kod ile giriş, client secret
+  yok; istemci tarafı hız sınırlama ve `slow_down` uyumu (±5 sn backoff).
+- **Otomatik token yenileme:** access token bitmeden 2 dk önce refresh grant
+  denenir; rotlanan refresh anahtarı keyring'de güncellenir; yenileme
+  reddedilirse hesap "yeniden bağlan" önerisiyle işaretlenir.
+- **Depo yayınlama:** hesap/visibility/açıklama seçimi, yayınlanınca
+  remote'un bağlanması ve klasörün depo olarak eklenmesi tek akışta.
+
+### Uygulama Geneli
+- **Otomatik kontrol (auto-fetch):** 1–60 dk aralıkla tüm depolar fetch
+  edilir; ↑/↓ rozetleri canlılanır. **Pull asla otomatik değildir.**
+- **Tümünü eşitle:** tüm depoları sırayla içe/dışa aktaran tur; ilerleme
+  modalı, durdurma, depo depo ✓/⏭/✗ raporu. Kilitli depo beklenmez, atlanır.
+- **Komut paleti (Ctrl+K / Ctrl+Shift+P):** sekmeler, depolar, dallar ve
+  işlemler üzerinde fuzzy arama; son 5 komut hatırlanır.
+- **OS bildirimleri:** clone/yayınlama/push reddi gibi uzun işler pencere
+  arkadayken bildirir; pencere odaklıyken bildirim gelmez.
+- **Erişilebilirlik:** tüm modallar odak tuzağı + Escape + kapanışta odağın
+  tetikleyiciye dönmesi; `prefers-reduced-motion` desteği; landmark ve
+  aria-live altyapısı — testlerle kilitli.
+- **Tek örnek (single-instance):** ikinci pencere açılırsa mevcut pencere
+  öne alınır; veritabanı tek süreçten yönetilir.
 
 ---
 
-## 📋 Kurulum ve Başlangıç
+## 🆚 Rakiplerden Farkı — Neyi Farklı Yapıyoruz?
 
-### 1. Ön Koşullar
+Önce dürüst çerçeve: GitOrbit, rakiplerinin yaptığı **her** şeyi yapmıyor
+(aşağıdaki "Bilinçli Sınırlar" tablosuna bak). İddiası şu: **yaptığı işi,
+kullanıcının verisine ve dikkatine saygı gösteren bir sıralamayla yapıyor.**
 
-- **Node.js:** `v20+` (önerilen `v22 LTS`) ve npm `v10+`
-- **Rust:** Stable toolchain (`1.80+`)
-- **Git CLI:** Yerel terminalde kurulu `git` (minimum `2.23`, önerilen `2.40+` — bkz. `docs/adr/0003-minimum-git-surumu.md`)
+| Boyut | Sektörde yaygın durum | GitOrbit |
+| --- | --- | --- |
+| **Kimlik bilgisi** | Token'lar genelde kendi vault'una/cloud hesabına, config'e ya da OS depolayıcısına "yardımcı" ile yazılır; birçok araç hesap açmayı şart koşar | Token ve refresh anahtarı **yalnızca işletim sistemi anahtarlığında**; işlemeye özel süreç ortamında (`GIT_ASKPASS` tüpü ile) yaşar; diske/URL'e/SQLite'a/log'a **asla** yazılmaz. OAuth App secret'ı mimari olarak yok |
+| **Hesap/telemetri** | Üretici hesabı (Atlassian/GitKraken vs.) ve uzaktan analitik yaygın | Kurulumdan ilk commit'e kadar hesap zorunluluğu yok; GitHub bağlantısı %100 isteğe bağlı; telemetri yok |
+| **Veri kaybı** | `--force`, `reset --hard`, "discard" tek tık ve sessiz sık karşılaşılan kısayollar | Non-fast-forward push'ta otomatik force **yok**; kirli worktree checkout'u engeller; discard/stash-drop/merge-abort çift onaylı; stash çakışmada korunur; amend yalnızca yerel commit'le sınırlı |
+| **Hata dürüstlüğü** | "Başarılı" yazıp kısmi kalan işlemler, yutulan `recovery_hint`'ler | Başarı yalnızca gerçek backend yanıtından gelir; hatalar kod + özgün açıklama + **kurtarma ipucu** ile tek merkezden (`lib/errors`) gösterilir; süresi dolmuş token "bilinmeyen hata" diye maskelenmez |
+| **Git'e yaklaşım** | Gömülü kütüphane (libgit2) ya da kabuk string birleştirme; köşeli vakalarda sessiz sapmalar | Sistem `git`'i, daima ayrı argüman listesi + NUL-ayraçlı makine çıktıları; beklenmeyen biçimde eski-yol fallback; process-group kill + pipe-drain + timeout'lu subprocess yönetimi |
+| **Worktree / alt modül** | `.git` dizini "dizindir" varsayımı sık kırılır | Linked worktree ve alt modüllerde `.git` bir **dosyadır**; git dizini her zaman `rev-parse --git-common-dir` ile çözülür (testli) |
+| **Performans profili** | Ağır Electron geçmişi; her panel ayrı subtree taraması | Tauri çekirdeği + tek status çağrısı, sınırlı diff okuma, bayat-yanıt yarış korumaları, IPC komutları olay döngüsü dışında |
+| **Denetim şeffaflığı** | Güvenlik iddiaları genelde pazarlama cümlesidir | Uçtan uca denetim (GO-xx çekirdek · CB-xx arayüz · R-xx risk kimlikli bulgular) → 9 iş paketinde kapatıldı; her bulgu hedefli regresyon testiyle kilitli (commit geçmişinde kimlikleriyle izlenebilir) |
+| **Dil** | TR çevirisi ya yok ya topluluk yaması | Arayüz Türkçe-first tasarlandı (hata metinleri dâhil) |
 
-#### Linux Sistem Paketleri (Ubuntu/Debian):
+Konumlandırma özeti: **GitHub Desktop**'un sadeliği + **Fork/Sourcetree**'nin
+çok depolu iş akışı + **GitButler**'ın günlük yaşam kalitesi — bunları
+**GitKraken tarzı hesap/cloud bağımlılığı olmadan** ve açık kaynak olarak
+hedefler. Terminal hâlâ en güçlü araçtır; GitOrbit onu ikame etmeye değil,
+sürtünmeyi kaldırmaya çalışır.
 
-```bash
-sudo apt update
-sudo apt install -y \
-  build-essential \
-  pkg-config \
-  libssl-dev \
-  libdbus-1-dev \
-  libwebkit2gtk-4.1-dev \
-  libayatana-appindicator3-dev \
-  librsvg2-dev
+---
+
+## 🚫 Bilinçli Sınırlar (Yapmadıklarımız)
+
+| Yapılmıyor | Neden |
+| --- | --- |
+| Etkileşimli rebase, cherry-pick UI'ı | Yüksek yıkıcılık, terminalde çok daha güvenli kontrol |
+| Satır içi (3 panelli) merge editörü | Karma içerik çözümü editörün işi; GitOrbit tarafa geçişi ve takibi verir |
+| Otomatik `git push --force`, otomatik pull | Kullanıcı onayı olmayan yıkıcı/istem dışı işlem ilkesi |
+| Depo grupları/etiket CRUD arayüzü | Kapsam yönetimi; terminal serbest |
+| Bulut senkronizasyonu, iş birliği özellikleri | Yerel-ilk mimari; veri sahibi kullanıcı |
+| İmzalı/notarize paketler (şimdilik) | v0.1/v0.2 dağıtım kararı; bkz. `docs/adr/0004`, release checklist |
+
+---
+
+## 🏗️ Mimari
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  React 19 UI (features/: Welcome · Repositories ·        │
+│  Changes · History · Branches · GitHub · Settings)       │
+│  komut paleti · toast · modal a11y (useDialogA11y)       │
+├──────────────── IPC (invoke) — 58 tip-güvenli komut ─────┤
+│  src-tauri: Tauri 2 kabuğu, komut yönlendirme,           │
+│  single-instance, CSP, OS bildirim/dialog eklentileri    │
+├──────────────────────────────────────────────────────────┤
+│  gitorbit-core (Rust)                                    │
+│  git/    status · diff · commit · branch · merge · stash │
+│          · remote · ignore · graph · history · adapter   │
+│  services/  RepositoryService · GitHubService            │
+│  db/        SQLite katalog (WAL) + migrate               │
+│  credential_store.rs  OS keyring (access + refresh)      │
+│  sync.rs  Tümünü-eşitle planlayıcısı (saf fonksiyon)     │
+├──────────────────────────────────────────────────────────┤
+│  Sistem git CLI (subprocess, ayrı argüman listesi,       │
+│  GIT_TERMINAL_PROMPT=0, GIT_ASKPASS tüpü, timeout,       │
+│  process-group kill) · OS keyring · dosya sistemi        │
+└──────────────────────────────────────────────────────────┘
 ```
 
-### 2. Projeyi Çalıştırma
+**Veri nereye yazılır?**
 
-```bash
-# 1. Bağımlılıkları yükleyin
-npm install
+| Veri | Konum | Not |
+| --- | --- | --- |
+| Depo kataloğu, son açılan, pin | SQLite (`app_data`) | WAL + `busy_timeout`; token **içermez** |
+| OAuth access + refresh token | **Yalnızca OS keyring** | Bitiş zamanı DB'de; anahtarın kendisi asla |
+| Uygulama durumu | SQLite | Korelasyon kimlikli loglama hassas veriyi maskeleyerek yazar |
 
-# 2. Ön yüz geliştirme sunucusunu başlatın (Tarayıcı önizleme)
-npm run dev
-
-# 3. Masaüstü uygulamasını geliştirici modunda başlatın (Tauri 2 Dev)
-npm run tauri dev
-```
-
-### 3. GitHub Entegrasyonu (Opsiyonel)
-
-GitHub hesap bağlama ve depo listeleme, **OAuth Device Flow** ile çalışır (bkz. `docs/adr/0001-github-device-flow.md`). Varsayılan OAuth App `client_id`'sı uygulama içine gömülüdür; kendi OAuth App kaydınızı kullanmak isterseniz uygulamayı şu ortam değişkeniyle başlatın:
-
-```bash
-GITORBIT_GITHUB_CLIENT_ID=<CLIENT_ID> npm run tauri dev
-```
-
-> Not: `client_id` RFC 8628 gereği gizli bir sır değildir. **Client secret kullanılmaz ve istenmez.** App oluştururken "Enable Device Flow" seçeneği işaretli olmalıdır. Yerel Git işlevleri (repo, commit, branch, remote) GitHub bağlantısı gerektirmez ve internet olmadan da çalışır.
-
----
-
-## 🧪 Test ve Kalite Kapıları
-
-Proje katı kalite kapılarıyla korunmaktadır:
-
-```bash
-# Kod formatı kontrolü
-npm run format:check
-
-# Statik kod analizi (ESLint)
-npm run lint
-
-# TypeScript tip kontrolü
-npm run typecheck
-
-# Ön yüz birim, bileşen, e2e ve a11y testleri (Vitest)
-npm test
-
-# Çekirdek Rust kabul testleri (Faz 2 - Faz 6 kabul testleri)
-cargo test --manifest-path crates/gitorbit-core/Cargo.toml --features test-support
-
-# Rust Clippy ve Format denetimi
-cargo fmt --manifest-path crates/gitorbit-core/Cargo.toml -- --check
-cargo clippy --manifest-path crates/gitorbit-core/Cargo.toml --features test-support --all-targets -- -D warnings
-
-# Masaüstü üretim derlemesi
-npm run build
-npm run tauri build -- --no-bundle
-```
-
----
-
-## 📁 Proje Dizin Yapısı
-
-```text
-GitOrbit/
-├── .github/workflows/       # Multi-platform CI (Linux, macOS, Windows)
-├── CONTRIBUTING.md          # Katkı rehberi ve kalite kapıları
-├── crates/
-│   └── gitorbit-core/       # Rust çekirdek alan modeli, Git CLI adaptörü & SQLite
-│       ├── src/
-│       │   ├── db/          # SQLite migrations ve DAO katmanı
-│       │   ├── git/         # Git status, diff, commit, branch, remote motoru
-│       │   ├── services/    # Repository & GitHub servisleri
-│       │   └── credential_store.rs # OS Keyring soyutlaması
-│       └── tests/           # Faz 2-6 resmi entegrasyon kabul testleri
-├── docs/                    # PRD, Engineering Spec, Lisans Envanteri ve Sürüm Notları
-│   ├── adr/                 # Architecture Decision Record'ları (ADR-0001..0004)
-│   ├── LICENSE_INVENTORY.md # Bağımlılık ve güvenlik denetimi
-│   ├── RELEASE_CHECKLIST.md # Release kalite kapıları kontrol listesi
-│   └── RELEASE_NOTES_v0.1.0.md # Sürüm notları ve bilinen sınırlamalar
-├── LICENSE                  # MIT
-├── SECURITY.md              # Güvenlik açığı bildirim politikası
-├── src/                     # React 19 UI
-│   ├── components/          # Ortak bileşenler ve Shell iskeleti
-│   ├── features/            # Welcome, Repositories, Changes, History, Branches, GitHub
-│   ├── lib/                 # Tauri IPC komut sarmalayıcıları
-│   ├── test/                # E2E ve Accessibility test paketleri
-│   └── types/               # IPC ve navigasyon tip sözleşmeleri
-├── src-tauri/               # Tauri 2 masaüstü uygulaması ve komut yönlendirme
-├── package.json             # Web bağımlılıkları ve scriptler
-└── vite.config.ts           # Vite + Vitest + Tailwind yapılandırması
-```
+**Yarış koşullarıyla mücadele (testli):** IPC başına seq-guard'lı bayat yanıt
+filtreleri, eşzamanlı refresh'i engelleyen `refresh_lock`, poizon-mutex
+kurtarması, auto-fetch tur üst üste binme koruması.
 
 ---
 
 ## 🔒 Güvenlik İlkeleri
 
-1. **Token Asla Diske Yazılmaz:** GitHub OAuth belirteçleri SQLite veritabanına, günlük (log) dosyalarına veya IPC yanıtlarına dahil edilmez. Yalnızca işletim sistemi anahtarlığında (`Keyring`) korunur.
-2. **Sessiz Veri Kaybı Engeli:** Kirli çalışma ağacı (`dirty worktree`) varken branch checkout veya pull gibi işlemler kullanıcıyı uyarmadan çalıştırılmaz; veri ezilmesini önlemek için işlem güvenle durdurulur.
-3. **Şeffaf ve Dürüst Arayüz:** Gerçekleştirilmemiş hiçbir işlem için arayüz sahte başarı bildirimi vermez.
+1. **Zero-Token Storage.** OAuth token ve refresh anahtarı yalnızca işletim
+   sistemi anahtarlığında. IPC yanıtlarına, log satırlarına, URL'lere ve
+   SQLite'a giremezler (redaksiyon katmanı + şekil bazlı temizlik).
+2. **En küçük enjekte.** Token, hedef remote gerçekten HTTPS ise ve yalnızca
+   çocuk Git sürecinin ortamına verilir (`GIT_CONFIG_*` ile stored-helper
+   sıfırlaması dâhil). SSH'ta `~/.ssh/config` devrededir.
+3. **Yıkıcı işlem, açık onay.** Discard, stash-drop, merge/rebase abort,
+   zorla silme: hepsi onaylı; checkout kirli worktree'de durur; non-fast-forward
+   push kendi başına force'a dönüşmez.
+4. **Dürüst arayüz.** Başarısız işlem "başarılı" görünemez; AUTH_EXPIRED gibi
+   durumlar kullanıcıya ne yapacağını söyleyen mesajla gösterilir.
+5. **Girdi sertliği.** Revizyon/stash/dal adları ve dosya yolları
+   doğrulanır (`..`, mutlak yol, kontrol karakteri, ANSI kaçışı reddi);
+   commit mesajları kontrol karakteri kapısından geçer.
+6. **Süreç hijyeni.** Her Git subprocess'i zaman aşımı + process-group kill
+   + pipe-drain ile yürür; kimlik soran Git asla askıda kalmaz
+   (`GIT_ASKPASS=echo`).
+7. **Güvenli varsayılan CSP.** `connect-src` yalnızca IPC; üretim
+   politikasında dev sunucu istisnaları yok.
+
+Detaylar ve bildirim politikası: `SECURITY.md`, `docs/adr/0002-os-credential-store.md`.
 
 ---
 
-## 📦 Dağıtım
+## 🧪 Kalite Kapıları
 
-v0.1.0, **bundle'sız çalıştırılabilir binary** olarak dağıtılır (`npm run tauri build -- --no-bundle`). Paket formatı (AppImage/.deb) kararı ve gerekçesi: `docs/adr/0004-linux-paketleme-bicimi.md`. İmzalı/notarize edilmiş paket iddiası yoktur; Windows ve macOS derlemeleri CI'da doğrulanır, imzalama sonraki sürüm hedefidir.
+Şu anki yeşil durum (bu depoda doğrulanmış sayılar):
+
+| Kapı | Komut | Durum |
+| --- | --- | --- |
+| Rust çekirdek (birim + kabul) | `cargo test --manifest-path crates/gitorbit-core/Cargo.toml --features test-support` | **111 test** |
+| Tauri kabuk | `cargo test` (`src-tauri/`) | 3 test |
+| Frontend birim/bileşen/a11y | `npm test` (Vitest) | **130 test / 26 dosya** |
+| Tip denetimi | `npm run typecheck` | temiz |
+| Üretim derlemesi | `npm run build` | temiz |
+| Biçim + lint | `npm run format:check` · `npm run lint` · `cargo fmt --check` · `clippy -D warnings` | temiz |
+
+Testler yalnız "çalışıyor" demez; davranış sözleşmesi taşır — örneğin: v2
+status ayrıştırıcısında boşluklu/rename yollar, hunk gövdesindeki `--- `
+satırlarının diff başlığı sayılmaması, worktree'de ignore'un gerçekten etkili
+olması (check-ignore ile), stash'in çakışmada silinmemesi, diyalogların Escape
+ile kapanıp odağı geri vermesi.
+
+**Denetim geçmişi:** v0.2.1 sonrasında uçtan uca güvenlik/performans/erişilebilirlik
+denetimi yapıldı; GO-xx (çekirdek), CB-xx (arayüz), R-xx (risk) kimlikli
+bulguların tamamı WP-0…WP-8 iş paketlerinde, her biri hedefli regresyon
+testiyle kapatıldı (commit mesajlarında izlenebilir).
 
 ---
 
-## 📜 Lisans
+## 🛠️ Kurulum ve Geliştirme
 
-Bu proje [MIT lisansı](LICENSE) altında yayınlanmıştır. Bağımlılık lisans uyumluluğu: `docs/LICENSE_INVENTORY.md`. Güvenlik sorunları için: `SECURITY.md`.
+### Ön koşullar
+- Node.js `v20+` (önerilen `v22 LTS`) ve npm `v10+`
+- Rust stable (`1.80+`)
+- Git CLI `2.23+` (önerilen `2.40+`; bkz. `docs/adr/0003-minimum-git-surumu.md`)
+
+Linux (Debian/Ubuntu) sistem paketleri:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential pkg-config libssl-dev libdbus-1-dev \
+  libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+```
+
+### Çalıştırma
+
+```bash
+npm install
+npm run tauri dev      # geliştirme (Vite HMR + Rust hot-rebuild)
+npm run tauri build    # üretim derlemesi
+```
+
+> Geliştirme kısayolu: `tauri.conf.json` içindeki `build.additionalWatchFolders:
+> ["../crates"]` sayesinde `gitorbit-core` kodu değişince `tauri dev` kendini
+> yeniden derler. (Anahtar adı bilinçli olarak eski/camelCase: kurulu
+> `@tauri-apps/cli` 2.12.4'ün şeması güncel kebab-case adını henüz tanımıyor;
+> `tauri-utils` 2.10 her iki adı da kabul ediyor.)
+
+### GitHub OAuth (isteğe bağlı)
+
+Yerel Git özellikleri internet ve GitHub hesabı gerektirmez. Device Flow
+kullanmak istersen kendi OAuth App'inin `client_id`'sını verebilirsin
+(RFC 8628 gereği `client_id` sır değildir; **secret kullanılmaz**):
+
+```bash
+GITORBIT_GITHUB_CLIENT_ID=<CLIENT_ID> npm run tauri dev
+```
+
+### Katkı kuralları
+
+- Bir iş paketi = bir commit; commit öncesi ilgili kapılar koşulur.
+- **Her iş paketinden sonra bu README güncellenir** (yetenek haritası,
+  kalite kapısı sayıları, sınır tablosu) — `AGENTS.md`'de kalıcı kural olarak duruyor.
+- Kullanıcı onayı olmadan push yok; yıkıcı Git işlemi UI'a eklenemez.
+
+Detaylar: `CONTRIBUTING.md` · `AGENTS.md`.
+
+---
+
+## 📁 Proje Yapısı
+
+```text
+GitOrbit/
+├── .github/workflows/          # Multi-platform CI (Linux, macOS, Windows)
+├── AGENTS.md                   # Kalıcı geliştirme kuralları (agent + insan)
+├── CONTRIBUTING.md             # Katkı rehberi ve kalite kapıları
+├── SECURITY.md                 # Güvenlik açığı bildirim politikası
+├── crates/gitorbit-core/       # Rust çekirdek: git motoru, SQLite, keyring
+│   ├── src/{git,db,services}/  #   + credential_store, sync planlayıcı
+│   └── tests/                  # Faz 2-7 kabul testleri + denetim regresyonları
+├── docs/
+│   ├── adr/                    # ADR-0001 Device Flow · 0002 Keyring · 0003 Git sürümü · 0004 Paketleme
+│   ├── GitOrbit_System_Design_PRD.md · GitOrbit_Engineering_Specification_v1.1.md
+│   ├── KULLANIM_v0.2.md        # v0.2 özelliklerinin kullanıcı rehberi
+│   ├── ROADMAP_v0.2_kullanim.md
+│   ├── RELEASE_NOTES_v0.1.0.md · RELEASE_NOTES_v0.2.md · RELEASE_CHECKLIST.md
+│   └── LICENSE_INVENTORY.md
+├── src/                        # React 19 arayüzü
+│   ├── components/{common,layout}/   # palet, modallar, Shell, Sidebar…
+│   ├── features/               # welcome · repositories · changes · history · branches · github · settings
+│   ├── lib/                    # tauriCommands (IPC) · errors.ts · useDialogA11y · useAutoFetch…
+│   ├── test/                   # e2e + erişilebilirlik sözleşme testleri
+│   └── types/                  # IPC tip sözleşmeleri
+├── src-tauri/                  # Tauri 2 kabuğu + komut yönlendirme
+└── vite.config.ts              # Vite + Vitest + Tailwind v4
+```
+
+---
+
+## 🕘 Sürüm Özeti
+
+| Sürüm | Tema | Özet |
+| --- | --- | --- |
+| **v0.1** | Çekirdek | Depo kataloğu, status/diff/stage/commit, dal yönetimi, push/fetch/pull, Device Flow + keyring, geçmiş listesi, CI |
+| **v0.2** | Günlük kullanım (12/12) | ignore + stash, auto-fetch + OS bildirimi + kontrollü amend, komut paleti + sürükle-bırak, commit grafiği, çakışma bandı + tümünü-eşitle, pin + onboarding |
+| **v0.2.1** | Güvenlik tazeleme + denetim | Refresh-token ile şeffaf token yenileme; GO/CB/R kimlikli denetim bulgularının 9 iş paketinde kapatılması (perf, veri kaybı kapıları, yarış koşulları, CSP, worktree ignore, odak erişilebilirliği) |
+
+---
+
+## 📦 Dağıtım ve Lisans
+
+v0.1/v0.2, **bundlesız çalıştırılabilir** olarak dağıtılır
+(`npm run tauri build -- --no-bundle`); Linux paket biçimi kararı ve
+gerekçe: `docs/adr/0004-linux-paketleme-bicimi.md`. İmzalama/noter onaylı
+paket sonraki sürüm hedefidir ve imza olmadan dağıtıldığı açıkça belirtilir.
+
+MIT lisans · bağımlılık lisans uyumluluğu `docs/LICENSE_INVENTORY.md` ·
+güvenlik sorunları için `SECURITY.md`.
