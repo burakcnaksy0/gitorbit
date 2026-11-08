@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { RepoSyncOutcome } from "../../types/ipc";
 import { syncCancelAll, syncPullAll, syncPushAll } from "../../lib/tauriCommands";
+import { useDialogA11y } from "../../lib/useDialogA11y";
 
 export type SyncAllKind = "pull" | "push";
 
@@ -55,6 +56,12 @@ export const SyncAllModal: React.FC<SyncAllModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const finishedRef = useRef(false);
 
+  // CB-09/CB-10: odak yönetimi + Tab tuzağı + Escape. Tur sürerken Escape
+  // kapatmaz — overlay tıklamasıyla aynı kural (durable işlem bölemez).
+  const dialogRef = useDialogA11y(true, () => {
+    if (!running) onClose();
+  });
+
   useEffect(() => {
     let ignore = false;
     void (async () => {
@@ -90,6 +97,7 @@ export const SyncAllModal: React.FC<SyncAllModalProps> = ({
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       role="dialog"
       aria-modal="true"

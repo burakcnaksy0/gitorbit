@@ -21,6 +21,7 @@ import {
 import type { RepositorySummary } from "../../types/navigation";
 import { EmptyState } from "../../components/common/EmptyState";
 import { pickDirectory } from "../../lib/directoryPicker";
+import { useDialogA11y } from "../../lib/useDialogA11y";
 
 interface RepositoryListViewProps {
   repositories: RepositorySummary[];
@@ -60,6 +61,11 @@ export const RepositoryListView: React.FC<RepositoryListViewProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [modal, setModal] = useState<ModalState>({ kind: "none" });
+
+  // CB-09/CB-10: kaldırma ve klonlama diyaloglarında odak yönetimi + Escape.
+  const closeModal = () => setModal({ kind: "none" });
+  const removeDialogRef = useDialogA11y(modal.kind === "remove", closeModal);
+  const cloneDialogRef = useDialogA11y(modal.kind === "clone", closeModal);
   const [busyRepoId, setBusyRepoId] = useState<string | null>(null);
 
   // Clone form state
@@ -393,6 +399,7 @@ export const RepositoryListView: React.FC<RepositoryListViewProps> = ({
       {/* Remove confirmation */}
       {modal.kind === "remove" && (
         <div
+          ref={removeDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
           role="dialog"
           aria-modal="true"
@@ -437,6 +444,7 @@ export const RepositoryListView: React.FC<RepositoryListViewProps> = ({
       {/* Clone form */}
       {modal.kind === "clone" && (
         <div
+          ref={cloneDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
           role="dialog"
           aria-modal="true"

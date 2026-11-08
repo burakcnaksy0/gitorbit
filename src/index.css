@@ -51,3 +51,18 @@ body {
 .animate-toast-in {
   animation: toast-in 180ms ease-out;
 }
+
+/* CB-12: "Azaltılmış hareket" (prefers-reduced-motion) sistem tercihine uy.
+ * Animasyon/transiyon süresi pratik olarak sıfırlanır; işlevsellik değişmez,
+ * yalnızca hareket duyarlılığı olan kullanıcılar için görsel gürültü kalkar.
+ * (WebKitGTK ve WebView2 her ikisi de bu media query'yi destekler.) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

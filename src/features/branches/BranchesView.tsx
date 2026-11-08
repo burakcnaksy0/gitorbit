@@ -28,6 +28,7 @@ import {
   repositoryMergeBranch,
 } from "../../lib/tauriCommands";
 import { useNotify } from "../../components/common/Toast";
+import { useDialogA11y } from "../../lib/useDialogA11y";
 
 interface BranchesViewProps {
   repoId?: string | null;
@@ -84,6 +85,18 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
   // CB-04: hızlı depo geçişinde eski deponun geç dönen yanıtı yeni deponun
   // listesini ezmesin — sonuç, talep anındaki repo + sıra numarasıyla doğrulanır.
   const branchesReqSeq = useRef(0);
+
+  // CB-09/CB-10: tüm diyaloglarda açılış odağı + Escape + Tab tuzağı +
+  // kapanışta odağın tetikleyiciye dönmesi (koşulsuz hook çağrıları).
+  const dirtyConflictDialogRef = useDialogA11y(!!dirtyConflictError, () =>
+    setDirtyConflictError(null)
+  );
+  const createDialogRef = useDialogA11y(isCreateOpen, () => setIsCreateOpen(false));
+  const deleteDialogRef = useDialogA11y(!!branchToDelete, () => setBranchToDelete(null));
+  const mergeDialogRef = useDialogA11y(!!branchToMerge, () => setBranchToMerge(null));
+  const abortConfirmDialogRef = useDialogA11y(isAbortConfirmOpen, () =>
+    setIsAbortConfirmOpen(false)
+  );
 
   const loadBranches = useCallback(async () => {
     if (!activeRepoId) {
@@ -416,6 +429,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
       {/* Dirty Worktree Conflict Modal */}
       {dirtyConflictError && (
         <div
+          ref={dirtyConflictDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
           role="dialog"
           aria-modal="true"
@@ -651,6 +665,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
       {/* Create Branch Modal */}
       {isCreateOpen && (
         <div
+          ref={createDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
           role="dialog"
           aria-modal="true"
@@ -742,6 +757,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
       {/* Delete Branch Modal */}
       {branchToDelete && (
         <div
+          ref={deleteDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
           role="dialog"
           aria-modal="true"
@@ -817,6 +833,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
       {/* Merge Modal */}
       {branchToMerge && (
         <div
+          ref={mergeDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
           role="dialog"
           aria-modal="true"
@@ -878,6 +895,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
       {/* Abort confirmation (destructive, explicit) */}
       {isAbortConfirmOpen && (
         <div
+          ref={abortConfirmDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
           role="dialog"
           aria-modal="true"

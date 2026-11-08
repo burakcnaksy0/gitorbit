@@ -32,6 +32,7 @@ import {
   repositoryGetHistory,
 } from "../../lib/tauriCommands";
 import { shortSha, useNotify } from "../../components/common/Toast";
+import { useDialogA11y } from "../../lib/useDialogA11y";
 
 interface HistoryViewProps {
   repoId?: string | null;
@@ -217,6 +218,11 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
   const [amendBusy, setAmendBusy] = useState(false);
   const [amendError, setAmendError] = useState<string | null>(null);
   const detailsAbort = useRef(0);
+  // CB-09/CB-10: amend diyaloğunda açılış odağı + Escape + Tab tuzağı.
+  // İşlem sürerken (amendBusy) Escape kapatmaz — overlay tıklamasıyla aynı kural.
+  const amendDialogRef = useDialogA11y(amendOpen && !!selectedCommit, () => {
+    if (!amendBusy) setAmendOpen(false);
+  });
   // CB-05: depo geçişinde eski deponun geç dönen geçmiş yanıtı yeni listeyi
   // ezmesin; sıra numarası her talepte artar, bayat sonuç düşürülür.
   const historyReqSeq = useRef(0);
@@ -809,6 +815,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
       {/* v0.2 — Son commit mesajını düzenle (kontrollü amend) */}
       {amendOpen && selectedCommit && (
         <div
+          ref={amendDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           role="dialog"
           aria-modal="true"

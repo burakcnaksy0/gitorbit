@@ -25,6 +25,7 @@ import type { GitHubAccount, GitHubPublishResult } from "../../types/ipc";
 import { friendlyError } from "../../lib/errors";
 import { githubListAccounts, githubPublishRepository } from "../../lib/tauriCommands";
 import { GithubIcon } from "../../components/common/GithubIcon";
+import { useDialogA11y } from "../../lib/useDialogA11y";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -51,13 +52,17 @@ export const NotGitChoiceModal: React.FC<NotGitChoiceModalProps> = ({
   onInitLocal,
   onInitAndPublish,
   onClose,
-}) => (
-  <div
-    className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="not-git-title"
-  >
+}) => {
+  // CB-09/CB-10: ebeveyn bunu yalnızca açıkken mount eder — açık kabul et.
+  const dialogRef = useDialogA11y(true, onClose);
+  return (
+    <div
+      ref={dialogRef}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="not-git-title"
+    >
     <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-lg w-full p-6 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
@@ -137,7 +142,8 @@ export const NotGitChoiceModal: React.FC<NotGitChoiceModalProps> = ({
       </button>
     </div>
   </div>
-);
+  );
+};
 
 // ---------------------------------------------------------------------------
 // PublishRepoModal
@@ -212,8 +218,12 @@ export const PublishRepoModal: React.FC<PublishRepoModalProps> = ({
     }
   }, [accountId, repoId, name, description, isPrivate, onPublished]);
 
+  // CB-09/CB-10: ebeveyn bunu yalnızca açıkken mount eder — açık kabul et.
+  const dialogRef = useDialogA11y(true, onClose);
+
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       role="dialog"
       aria-modal="true"

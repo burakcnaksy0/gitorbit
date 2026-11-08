@@ -59,6 +59,7 @@ import {
   repositoryUnstageFiles,
 } from "../../lib/tauriCommands";
 import { shortSha, useNotify } from "../../components/common/Toast";
+import { useDialogA11y } from "../../lib/useDialogA11y";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -130,8 +131,11 @@ function DiscardModal({
   onCancel,
   isLoading,
 }: DiscardModalProps) {
+  // CB-09/CB-10: bu bileşen yalnızca açıkken mount olur — açık kabul et.
+  const dialogRef = useDialogA11y(true, onCancel);
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
@@ -488,6 +492,17 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
   const [isStashing, setIsStashing] = useState(false);
   const [stashBusyId, setStashBusyId] = useState<string | null>(null);
   const [stashDropTarget, setStashDropTarget] = useState<StashEntry | null>(null);
+
+  // CB-09/CB-10: diyaloglarda açılış odağı + Escape + Tab tuzağı + kapanışta
+  // odağın geri verilmesi (koşulsuz hook çağrıları).
+  const identityDialogRef = useDialogA11y(isIdentityModalOpen, () =>
+    setIsIdentityModalOpen(false)
+  );
+  const ignoreDialogRef = useDialogA11y(!!ignoreTarget, () => setIgnoreTarget(null));
+  const stashDialogRef = useDialogA11y(stashModalOpen, () => setStashModalOpen(false));
+  const stashDropDialogRef = useDialogA11y(!!stashDropTarget, () =>
+    setStashDropTarget(null)
+  );
 
   // v0.2 — Çakışma yardımcı paneli (madde 7)
   const [conflictBusy, setConflictBusy] = useState<string | null>(null);
@@ -1588,6 +1603,7 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
       {/* Identity Configuration Modal */}
       {isIdentityModalOpen && (
         <div
+          ref={identityDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
           role="dialog"
           aria-modal="true"
@@ -1685,6 +1701,7 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
       {/* v0.2 — Yoksayme kapsam secimi */}
       {ignoreTarget && (
         <div
+          ref={ignoreDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           role="dialog"
           aria-modal="true"
@@ -1746,6 +1763,7 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
       {/* v0.2 — Stash alma (Kenara Al) */}
       {stashModalOpen && (
         <div
+          ref={stashDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           role="dialog"
           aria-modal="true"
@@ -1806,6 +1824,7 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
       {/* v0.2 — Stash silme onayi */}
       {stashDropTarget && (
         <div
+          ref={stashDropDialogRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           role="dialog"
           aria-modal="true"

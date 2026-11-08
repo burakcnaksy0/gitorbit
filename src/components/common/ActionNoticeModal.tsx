@@ -1,5 +1,6 @@
 import React from "react";
 import { AlertTriangle, Info, X } from "lucide-react";
+import { useDialogA11y } from "../../lib/useDialogA11y";
 
 interface ActionNoticeModalProps {
   isOpen: boolean;
@@ -27,20 +28,9 @@ export const ActionNoticeModal: React.FC<ActionNoticeModalProps> = ({
   details,
   tone = "info",
 }) => {
-  React.useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen, onClose]);
+  // CB-09/CB-10: Escape + açılış odağı + Tab tuzağı + kapanışta odağın
+  // geri verilmesi — elle yazılmış Escape effect'inin yerini alır.
+  const dialogRef = useDialogA11y(isOpen, onClose);
 
   if (!isOpen) return null;
 
@@ -48,6 +38,7 @@ export const ActionNoticeModal: React.FC<ActionNoticeModalProps> = ({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
