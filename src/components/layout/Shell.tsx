@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TopBar } from "./TopBar";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
@@ -178,9 +178,13 @@ export const Shell: React.FC = () => {
   // Loading
   // -------------------------------------------------------------------------
 
+  const loadSeq = useRef(0);
+
   const loadRepositories = useCallback(async () => {
+    const seq = ++loadSeq.current;
     try {
       const records = await repositoryList();
+      if (loadSeq.current !== seq) return; // CB-03: bayat tur
       setReposError(null);
       if (!Array.isArray(records)) {
         throw {
@@ -209,21 +213,26 @@ export const Shell: React.FC = () => {
           }
         })
       );
-
-      setStatuses(statusEntries);
-      setLastCommits(commitEntries);
+      // Tarama bitti ama bu arada daha yeni bir tur başladıysa bu turun
+      // toplu sonuçları uygulamaz (CB-03).
+      if (loadSeq.current !== seq) return;
+      // Toplu DEĞİŞTİRME değil birleştirme: bu sırada yazan auto-fetch/
+      // mutasyon güncellemeleri silinmesin.
+      setStatuses((prev) => ({ ...prev, ...statusEntries }));
+      setLastCommits((prev) => ({ ...prev, ...commitEntries }));
       setCurrentRepoId((prev) => {
         if (prev && records.some((r) => r.id === prev)) return prev;
         return records[0]?.id ?? null;
       });
     } catch (err) {
+      if (loadSeq.current !== seq) return;
       setReposError(errorMessage(err));
       setRepositories([]);
       setStatuses({});
       setLastCommits({});
       setCurrentRepoId(null);
     } finally {
-      setIsLoadingRepos(false);
+      if (loadSeq.current === seq) setIsLoadingRepos(false);
     }
   }, []);
 

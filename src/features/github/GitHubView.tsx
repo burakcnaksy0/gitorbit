@@ -736,18 +736,25 @@ export const GitHubView: React.FC = () => {
     setActionError(null);
   }, [stopPolling]);
 
+  // CB-07: hızlı hesap geçişlerinde eski hesabın geç dönen liste/profil
+  // yanıtı mevcut görünümü ezmesin — her etkileşim sıra numarası alır.
+  const viewSeq = useRef(0);
+
   // View repos for an account
   const handleViewRepos = useCallback(async (account: GitHubAccount) => {
+    const seq = ++viewSeq.current;
     setReposLoading(true);
     setActionError(null);
     setView({ kind: "repos", account, page: null, currentPage: 1 });
     try {
       const page = await githubListRepos(account.id, 1, 30);
+      if (viewSeq.current !== seq) return; // kullanıcı başka hesaba geçti
       setView({ kind: "repos", account, page, currentPage: 1 });
     } catch (err) {
+      if (viewSeq.current !== seq) return;
       setActionError(formatError(err as AppError));
     } finally {
-      setReposLoading(false);
+      if (viewSeq.current === seq) setReposLoading(false);
     }
   }, []);
 
@@ -756,15 +763,18 @@ export const GitHubView: React.FC = () => {
       if (view.kind !== "repos") return;
       const newPage = direction === "next" ? view.currentPage + 1 : view.currentPage - 1;
       if (newPage < 1) return;
+      const seq = ++viewSeq.current;
       setReposLoading(true);
       setActionError(null);
       try {
         const page = await githubListRepos(view.account.id, newPage, 30);
+        if (viewSeq.current !== seq) return;
         setView({ kind: "repos", account: view.account, page, currentPage: newPage });
       } catch (err) {
+        if (viewSeq.current !== seq) return;
         setActionError(formatError(err as AppError));
       } finally {
-        setReposLoading(false);
+        if (viewSeq.current === seq) setReposLoading(false);
       }
     },
     [view]
@@ -773,17 +783,20 @@ export const GitHubView: React.FC = () => {
   // Disconnect account
   // View profile/overview for an account
   const handleViewProfile = useCallback(async (account: GitHubAccount) => {
+    const seq = ++viewSeq.current;
     setProfileLoading(true);
     setProfileError(null);
     setActionError(null);
     setView({ kind: "profile", account, profile: null });
     try {
       const profile = await githubGetAccountProfile(account.id);
+      if (viewSeq.current !== seq) return;
       setView({ kind: "profile", account, profile });
     } catch (err) {
+      if (viewSeq.current !== seq) return;
       setProfileError(formatError(err as AppError));
     } finally {
-      setProfileLoading(false);
+      if (viewSeq.current === seq) setProfileLoading(false);
     }
   }, []);
 

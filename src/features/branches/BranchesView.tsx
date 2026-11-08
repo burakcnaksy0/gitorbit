@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -81,6 +81,10 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
   const [isOperationBusy, setIsOperationBusy] = useState(false);
   const [isAbortConfirmOpen, setIsAbortConfirmOpen] = useState(false);
 
+  // CB-04: hızlı depo geçişinde eski deponun geç dönen yanıtı yeni deponun
+  // listesini ezmesin — sonuç, talep anındaki repo + sıra numarasıyla doğrulanır.
+  const branchesReqSeq = useRef(0);
+
   const loadBranches = useCallback(async () => {
     if (!activeRepoId) {
       setBranches([]);
@@ -88,6 +92,7 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
       return;
     }
 
+    const seq = ++branchesReqSeq.current;
     setIsLoading(true);
     setActionError(null);
     try {
@@ -95,13 +100,15 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
         repositoryGetBranches(activeRepoId),
         repositoryGetStatus(activeRepoId),
       ]);
+      if (branchesReqSeq.current !== seq) return; // bayat yanıt
       setBranches(branchList);
       setStatus(repoStatus);
     } catch (err) {
+      if (branchesReqSeq.current !== seq) return;
       const e = err as AppError;
       setActionError(e.message || "Branch listesi yüklenemedi.");
     } finally {
-      setIsLoading(false);
+      if (branchesReqSeq.current === seq) setIsLoading(false);
     }
   }, [activeRepoId]);
 

@@ -558,6 +558,14 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
     if (!repoId) return;
     let ignore = false;
 
+    // CB-06: depo değişti — ESKİ deponun dosya seçimi, diff görüntüsü ve
+    // yazılmakta olan commit taslağı yeni depoya taşınmamalı (A'ya yazılan
+    // mesaj B'ye commit'lenebilirdi). Aşağıdaki status fetch'i yeni depo için
+    // doğru varsayılan seçimi zaten yapar.
+    setSelectedFile(null);
+    setDiff(null);
+    setCommitMessage("");
+
     // Asynchronously fetch initial status
     const timer = setTimeout(() => {
       void (async () => {

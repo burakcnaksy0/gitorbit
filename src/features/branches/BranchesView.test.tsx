@@ -63,6 +63,41 @@ describe("BranchesView (Faz 4)", () => {
     vi.mocked(tauriCommands.repositoryGetStatus).mockResolvedValue(mockStatus);
   });
 
+  it("geç dönen eski depo yanıtı yeni listeyi ezmez (CB-04 regresyon)", async () => {
+    const trunkOnly: BranchInfo[] = [
+      {
+        name: "trunk",
+        is_current: true,
+        is_remote: false,
+        upstream: null,
+        last_commit_hash: "9999abc",
+        last_commit_message: "only in repo-2",
+      },
+    ];
+    let resolveSlow!: (v: BranchInfo[]) => void;
+    const slow = new Promise<BranchInfo[]>((r) => {
+      resolveSlow = r;
+    });
+    vi.mocked(tauriCommands.repositoryGetBranches).mockImplementation((repoId) =>
+      repoId === "repo-1" ? slow : Promise.resolve(trunkOnly)
+    );
+
+    const { rerender } = render(<BranchesView repoId="repo-1" />);
+    // Ertelenmiş (setTimeout 0) yüklemenin başlamasını bekle — repo-1 isteği
+    // gerçekten uçakta olmalı ki bayat yanıt sınaması anlamlı olsun.
+    await new Promise((r) => setTimeout(r, 5));
+    rerender(<BranchesView repoId="repo-2" />); // hızlı geçiş
+
+    // repo-2 (hızlı) önce çözülür ve listeyi kurar
+    await waitFor(() => expect(screen.getByText("trunk")).toBeInTheDocument());
+
+    // repo-1'in BAYAT yanıtı sonra döner — listeyi bozmamalı
+    resolveSlow(mockBranches);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByText("feature/login")).not.toBeInTheDocument();
+    expect(screen.getByText("trunk")).toBeInTheDocument();
+  });
+
   it("renders branch list separating local and remote branches", async () => {
     render(<BranchesView repoId="repo-123" />);
 

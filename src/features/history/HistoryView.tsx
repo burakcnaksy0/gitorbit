@@ -217,6 +217,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
   const [amendBusy, setAmendBusy] = useState(false);
   const [amendError, setAmendError] = useState<string | null>(null);
   const detailsAbort = useRef(0);
+  // CB-05: depo geçişinde eski deponun geç dönen geçmiş yanıtı yeni listeyi
+  // ezmesin; sıra numarası her talepte artar, bayat sonuç düşürülür.
+  const historyReqSeq = useRef(0);
 
   const loadHistory = useCallback(
     async (reset = true) => {
@@ -229,6 +232,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
         return;
       }
 
+      const seq = ++historyReqSeq.current;
       if (reset) setIsLoading(true);
       else setIsLoadingMore(true);
       setError(null);
@@ -241,6 +245,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
           PAGE_SIZE,
           offset
         );
+        if (historyReqSeq.current !== seq) return; // bayat yanıt
         if (reset) {
           setCommits(historyRes.commits);
           setGraph(historyRes.graph ?? []);
@@ -254,11 +259,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
         setHasMore(historyRes.has_more);
         setNextOffset(historyRes.next_offset);
       } catch (err) {
+        if (historyReqSeq.current !== seq) return;
         const e = err as AppError;
         setError(e.message || "Commit geçmişi yüklenemedi.");
       } finally {
-        setIsLoading(false);
-        setIsLoadingMore(false);
+        if (historyReqSeq.current === seq) {
+          setIsLoading(false);
+          setIsLoadingMore(false);
+        }
       }
     },
     [activeRepoId, nextOffset]
@@ -266,6 +274,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
 
   useEffect(() => {
     let ignore = false;
+    // Depo değişti: ESKİ deponun seçimi/anlık verisi yeni depoya taşınmasın
+    // (detay effect'i aksi halde yeniDepo+eskiSha ile boşa IPC atardı).
+    setSelectedCommit(null);
+    setCommits([]);
+    setGraph([]);
+    setHasMore(false);
+    setNextOffset(0);
     const timer = setTimeout(() => {
       if (!ignore) void loadHistory(true);
     }, 0);
