@@ -48,7 +48,7 @@ impl MockGitHubHttpClient {
                 user_code: "ABCD-1234".to_string(),
                 verification_uri: "https://github.com/login/device".to_string(),
                 expires_in: 900,
-                interval: 5,
+                interval: 0, // throttle testte devre dışı (GO-17c asıl testi ayrı)
             },
             poll_responses: Mutex::new(vec![RawPollResponse::Success {
                 access_token: "test_token_xyz".to_string(),
@@ -94,7 +94,7 @@ impl MockGitHubHttpClient {
                 user_code: "EFGH-5678".to_string(),
                 verification_uri: "https://github.com/login/device".to_string(),
                 expires_in: 900,
-                interval: 5,
+                interval: 0, // throttle testte devre dışı (GO-17c asıl testi ayrı)
             },
             poll_responses: Mutex::new(vec![
                 RawPollResponse::Pending {
@@ -129,7 +129,7 @@ impl MockGitHubHttpClient {
                 user_code: "DENY-0000".to_string(),
                 verification_uri: "https://github.com/login/device".to_string(),
                 expires_in: 900,
-                interval: 5,
+                interval: 0, // throttle testte devre dışı (GO-17c asıl testi ayrı)
             },
             poll_responses: Mutex::new(vec![RawPollResponse::Pending {
                 error: "access_denied".to_string(),
@@ -925,4 +925,78 @@ fn test_refresh_flow_concurrent_calls_trigger_single_refresh() {
     for t in tokens {
         assert_eq!(t, "refreshed_token_456");
     }
+}
+
+// ---------------------------------------------------------------------------
+// GO-17c: backend device-flow throttle (RFC 8628) — interval + slow_down
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_go17c_poll_throttled_before_interval_and_slow_down_escalates() {
+    let db = make_db();
+    // interval=60: mock kuyruğunda TEK yanıt var — throttle bozuksa ilk poll
+    // Success'u tüketir ve test patlar.
+    let mut client = MockGitHubHttpClient::new_with_success_on_first_poll();
+    client.device_flow_resp.interval = 60;
+    let svc = make_service(client);
+
+    let (_session, pending) = svc.begin_device_flow().expect("begin");
+
+    // 1) Interval dolmadan gelen poll GitHub'a İLETİLMEZ → yerel Pending.
+    let r = svc
+        .poll_device_flow(&db, &pending, &pending.session_token.clone())
+        .expect("throttled poll");
+    assert!(matches!(r, PollResult::Pending), "yerel Pending beklenirdi");
+
+    // 2) Zaman geçmişe alınınca gerçek HTTP gider → Success (kuyruk duruyor).
+    pending.force_pollable_for_test();
+    let r2 = svc
+        .poll_device_flow(&db, &pending, &pending.session_token.clone())
+        .expect("real poll");
+    assert!(
+        matches!(r2, PollResult::Success { .. }),
+        "kuyrukta Success duruyor olmalı — throttle sayacı HTTP'i ertelemişti"
+    );
+
+    // 3) slow_down → aralık +5 sn (RFC 8628 §3.5 zorunluluğu).
+    let mut client2 = MockGitHubHttpClient::new_with_pending_then_success();
+    client2.device_flow_resp.interval = 0;
+    // Kuyruk başına slow_down ekle
+    {
+        let mut q = client2.poll_responses.lock().unwrap();
+        q.insert(
+            0,
+            RawPollResponse::Pending {
+                error: "slow_down".to_string(),
+                error_description: Some("Slow down.".to_string()),
+            },
+        );
+    }
+    let svc2 = make_service(client2);
+    let (_s2, pending2) = svc2.begin_device_flow().expect("begin 2");
+    assert_eq!(pending2.current_interval_secs(), 0);
+
+    let r = svc2
+        .poll_device_flow(&db, &pending2, &pending2.session_token.clone())
+        .expect("slow_down poll");
+    assert!(matches!(r, PollResult::Pending));
+    assert_eq!(
+        pending2.current_interval_secs(),
+        5,
+        "slow_down sonrası aralık 5 sn artmalı"
+    );
+
+    // Artan aralık gerçekten throttle eder (ikinci anlık poll HTTP'e gitmez;
+    // kuyruktaki sonraki yanıt Pending — tüketilse de görünüm aynı, bu yüzden
+    // dolaylı doğrulama: force sonrası kuyruk Success vermeye devam etmeli).
+    pending2.force_pollable_for_test();
+    let r3 = svc2
+        .poll_device_flow(&db, &pending2, &pending2.session_token.clone())
+        .expect("forced poll");
+    assert!(matches!(r3, PollResult::Pending)); // kuyruktaki authorization_pending
+    pending2.force_pollable_for_test();
+    let r4 = svc2
+        .poll_device_flow(&db, &pending2, &pending2.session_token.clone())
+        .expect("forced poll 2");
+    assert!(matches!(r4, PollResult::Success { .. }));
 }

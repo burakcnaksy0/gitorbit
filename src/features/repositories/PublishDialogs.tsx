@@ -21,7 +21,8 @@ import {
   Rocket,
   X,
 } from "lucide-react";
-import type { AppError, GitHubAccount, GitHubPublishResult } from "../../types/ipc";
+import type { GitHubAccount, GitHubPublishResult } from "../../types/ipc";
+import { friendlyError } from "../../lib/errors";
 import { githubListAccounts, githubPublishRepository } from "../../lib/tauriCommands";
 import { GithubIcon } from "../../components/common/GithubIcon";
 
@@ -29,22 +30,8 @@ import { GithubIcon } from "../../components/common/GithubIcon";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function errorMessage(err: unknown): string {
-  const e = err as AppError;
-  if (e?.code === "REMOTE_EXISTS") {
-    return "Bu depo zaten bir remote'a (origin) bağlı. Gönderim için alt bardaki Dışa Aktar butonunu kullanın.";
-  }
-  if (e?.code === "REPO_NAME_INVALID") {
-    return "Depo adı geçersiz: boş olamaz ve yalnızca harf, rakam, '-', '_', '.' içerebilir.";
-  }
-  if (e?.code === "AUTH_EXPIRED" || e?.code === "AUTH_REQUIRED") {
-    return "GitHub kimlik doğrulaması geçersiz. GitHub ekranından hesabınızı yeniden bağlayın.";
-  }
-  if (e?.code === "RATE_LIMITED") {
-    return "GitHub API istek sınırı aşıldı. Lütfen biraz bekleyip tekrar deneyin.";
-  }
-  return e?.message || "Beklenmeyen bir hata oluştu.";
-}
+// CB-08: kod-eşlemeleri ve recovery_hint gösterimi merkezi lib/errors'ta.
+const errorMessage = friendlyError;
 
 // ---------------------------------------------------------------------------
 // NotGitChoiceModal

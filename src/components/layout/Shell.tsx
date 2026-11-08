@@ -56,34 +56,15 @@ import { notifySystem } from "../../lib/notifications";
 import { useAutoFetch } from "../../lib/useAutoFetch";
 import { useFolderDrop } from "../../lib/useFolderDrop";
 import { useNotify } from "../common/Toast";
+import { errorCode, errorMessage, errorHint } from "../../lib/errors";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function errorMessage(err: unknown): string {
-  if (err && typeof err === "object" && "message" in err) {
-    const message = (err as AppError).message;
-    if (typeof message === "string" && message.length > 0) return message;
-  }
-  return "Beklenmeyen bir hata oluştu.";
-}
-
-function errorCode(err: unknown): string {
-  if (err && typeof err === "object" && "code" in err) {
-    const code = (err as AppError).code;
-    if (typeof code === "string" && code.length > 0) return code;
-  }
-  return "INTERNAL_ERROR";
-}
-
-function errorHint(err: unknown): string | undefined {
-  if (err && typeof err === "object" && "recovery_hint" in err) {
-    const hint = (err as AppError).recovery_hint;
-    if (typeof hint === "string" && hint.length > 0) return hint;
-  }
-  return undefined;
-}
+// CB-08: hata ayrıştırma merkezi modülde (lib/errors) — Shell, GitHubView ve
+// PublishDialogs aynı kaynağı kullanır; recovery_hint hiçbir gösterim
+// noktasında kaybolmaz. (import yukarıda)
 
 interface NoticeState {
   isOpen: boolean;

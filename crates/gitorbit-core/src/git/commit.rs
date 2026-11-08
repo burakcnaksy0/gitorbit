@@ -8,6 +8,29 @@ const COMMIT_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub struct GitCommitManager;
 
+/// GO-05c: commit mesajı karakter kapısı. Yazılabilir karakterler ile satır
+/// sonu (`\n`) ve sekme (`\t`) serbest; diğer ASCII kontrol karakterleri ve
+/// DEL (0x7F) REDDEDİLİR. ANSI kaçış dizileri (ESC, 0x1B) bu kapıdan geçemez
+/// — terminali manipüle eden içerik commit geçmişine/terminal loglarına
+/// taşınamaz (ör. `git log` çıktısına gizli ANSI enjekte eden mesajlar).
+fn validate_commit_message(message: &str) -> Result<(), CommandError> {
+    if let Some((idx, ch)) = message
+        .chars()
+        .enumerate()
+        .find(|(_, c)| (c.is_ascii_control() && *c != '\n' && *c != '\t') || *c == '\u{7f}')
+    {
+        return Err(CommandError::new(
+            "VALIDATION_ERROR",
+            format!(
+                "Commit mesajı geçersiz kontrol karakteri içeriyor (konum {}, U+{:04X}). Yalnızca yazılabilir karakterler, satır sonu ve sekme kullanılabilir.",
+                idx, ch as u32
+            ),
+            true,
+        ));
+    }
+    Ok(())
+}
+
 impl GitCommitManager {
     /// Reads effective Git user.name and user.email for the repository.
     pub fn get_identity(repo_dir: &Path) -> Result<GitIdentity, CommandError> {
@@ -122,6 +145,8 @@ impl GitCommitManager {
                 true,
             ));
         }
+        // GO-05c: boşluk kontrolünden sonra karakter kapısı (ansi escape vb.)
+        validate_commit_message(trimmed_message)?;
 
         // Amend rewrites existing history. Faz 4 does not expose this flow;
         // reject it rather than silently rewriting the last commit.
@@ -246,6 +271,8 @@ impl GitCommitManager {
                 true,
             ));
         }
+        // GO-05c: commit() ile aynı karakter kapısı — amend bypass olamaz.
+        validate_commit_message(message)?;
 
         // 1. HEAD exists? (unborn HEAD has nothing to amend)
         let head_exists = GitAdapter::execute_with_timeout(
@@ -335,5 +362,32 @@ mod amend_tests {
         assert!(!GitCommitManager::amend_allowed(None, 0, true));
         // Tamamen yerel dal → serbest.
         assert!(GitCommitManager::amend_allowed(None, 0, false));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GO-05c: karakter kapısı birim testleri
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::validate_commit_message;
+
+    #[test]
+    fn go05c_normal_and_multiline_messages_accepted() {
+        assert!(validate_commit_message("Fix login flow").is_ok());
+        assert!(validate_commit_message("Başlık\n\nGövde satırı\tsekme ile").is_ok());
+        assert!(validate_commit_message("Türkçe karakterler: çğıöşü ✓ emoji 🚀").is_ok());
+    }
+
+    #[test]
+    fn go05c_control_characters_rejected() {
+        // NUL, Bell, CR, ESC (ANSI kaçış dizilerinin başlangıcı) reddedilmeli
+        for bad in ["a\u{0}b", "risk\u{7}", "satır\u{d}sonu", "\u{1b}[31mkırmızı\u{1b}[0m"] {
+            let err = validate_commit_message(bad).expect_err("kontrol karakteri geçmemeli");
+            assert_eq!(err.code, "VALIDATION_ERROR");
+        }
+        // DEL de reddedilir
+        assert!(validate_commit_message("del\u{7f}sonu").is_err());
     }
 }

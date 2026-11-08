@@ -40,6 +40,7 @@ import type {
   GitHubRepoPage,
 } from "../../types/ipc";
 import { GithubIcon } from "../../components/common/GithubIcon";
+import { friendlyError } from "../../lib/errors";
 import {
   githubBeginLogin,
   githubPollLogin,
@@ -73,29 +74,8 @@ type ViewState =
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatError(err: AppError): string {
-  switch (err.code) {
-    case "AUTH_REQUIRED":
-    case "AUTH_EXPIRED":
-      return "Kimlik doğrulama gerekiyor. Lütfen tekrar bağlanın.";
-    case "RATE_LIMITED":
-      return "GitHub API istek sınırı aşıldı. Lütfen daha sonra tekrar deneyin.";
-    case "PERMISSION_DENIED":
-      return "Bu kaynak için izniniz yok veya kapsam yetersiz.";
-    case "NOT_FOUND":
-      return "Kaynak bulunamadı veya erişim izniniz yok.";
-    case "CREDENTIAL_STORE_UNAVAILABLE":
-      return "İşletim sistemi kimlik deposu kullanılamıyor. GitHub hesabı bağlanamaz.";
-    case "DEVICE_FLOW_EXPIRED":
-      return "Oturum süresi doldu. Lütfen tekrar başlatın.";
-    case "NETWORK_ERROR":
-      return "Ağ hatası. İnternet bağlantınızı kontrol edin.";
-    case "SERVER_ERROR":
-      return "GitHub sunucu hatası. Daha sonra tekrar deneyin.";
-    default:
-      return err.message || "Bilinmeyen hata.";
-  }
-}
+// CB-08: dost mesaj + recovery_hint eşlemesi merkezi modülde (lib/errors).
+const formatError = friendlyError;
 
 // ---------------------------------------------------------------------------
 // Sub-component: AccountCard

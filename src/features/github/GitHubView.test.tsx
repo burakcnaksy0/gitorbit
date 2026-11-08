@@ -299,7 +299,9 @@ describe("GitHubView (Faz 6)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Kimlik doğrulama gerekiyor. Lütfen tekrar bağlanın.")
+        // CB-08: AUTH_EXPIRED artık merkezi lib/errors'taki özgün mesajla
+        // gösteriliyor (yeniden bağlanma yönergeli), jenerik metinle değil.
+        screen.getByText(/GitHub kimlik doğrulaması geçersiz/)
       ).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: /Tekrar dene/i })).toBeInTheDocument();

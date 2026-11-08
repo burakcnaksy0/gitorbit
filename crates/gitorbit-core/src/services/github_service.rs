@@ -441,11 +441,29 @@ pub struct PendingDeviceFlow {
     pub client_id: String,
     pub expires_at: Instant,
     pub poll_interval_secs: u64,
+    /// GO-17c (RFC 8628 §3.5): son gerçek HTTP yoklaması ve güncel alt sınır.
+    /// İstemci hızlı gelirse sunucuya gitmeden Pending döner; GitHub
+    /// `slow_down` derse alt sınır +5 sn büyür. Cell: imza `&self` kalır.
+    last_http_poll: std::cell::Cell<Instant>,
+    current_interval_secs: std::cell::Cell<u64>,
 }
 
 impl PendingDeviceFlow {
     pub fn device_code(&self) -> &str {
         &self.device_code
+    }
+
+    /// Test/teşhis amaçlı güncel yoklama alt sınırı.
+    pub fn current_interval_secs(&self) -> u64 {
+        self.current_interval_secs.get()
+    }
+
+    /// GO-17c: GO-17c throttle'unu geçici olarak "süre geçmişe" alır —
+    /// testlerde arka arkaya yoklama senaryoları için (yalnızca test-support).
+    #[cfg(feature = "test-support")]
+    pub fn force_pollable_for_test(&self) {
+        self.last_http_poll
+            .set(Instant::now() - std::time::Duration::from_secs(3600));
     }
 
     pub fn is_expired(&self) -> bool {
@@ -527,6 +545,8 @@ impl GitHubService {
             client_id,
             expires_at,
             poll_interval_secs: raw.interval,
+            last_http_poll: std::cell::Cell::new(Instant::now()),
+            current_interval_secs: std::cell::Cell::new(raw.interval),
         };
 
         Ok((session, pending))
@@ -560,14 +580,28 @@ impl GitHubService {
             ));
         }
 
+        // 2.5. GO-17c (RFC 8628): interval dolmadan gelen yoklama GitHub'a
+        // İLETİLMEZ — yerel Pending. Hızlı tıklama/istemci hatası GitHub
+        // oran-limit cezasına (slow_down/403) dönüşemez.
+        if pending.last_http_poll.get().elapsed() < Duration::from_secs(pending.current_interval_secs.get()) {
+            return Ok(PollResult::Pending);
+        }
+
         // 3. Poll GitHub
         let raw_poll = self
             .client
             .poll_device_token(&pending.client_id, pending.device_code())?;
+        pending.last_http_poll.set(Instant::now());
 
         match raw_poll {
             RawPollResponse::Pending { error, .. } => match error.as_str() {
-                "authorization_pending" | "slow_down" => Ok(PollResult::Pending),
+                "authorization_pending" => Ok(PollResult::Pending),
+                // RFC 8628 §3.5: slow_down → bir sonraki denemeye kadar
+                // aralık 5 sn artırılır (RFK zorunluluğu, rica değil).
+                "slow_down" => {
+                    pending.current_interval_secs.set(pending.current_interval_secs.get() + 5);
+                    Ok(PollResult::Pending)
+                }
                 "access_denied" => Err(CommandError::auth_required(
                     "Kullanıcı GitHub erişimini reddetti.",
                 )),

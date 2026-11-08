@@ -113,14 +113,25 @@ impl From<CommandError> for AppError {
 
 type CmdResult<T> = Result<T, AppError>;
 
+/// GO-15c: bir mutex'i "poison" durumunda da açar. Bir komut paniklediğinde
+/// std Mutex poison olur ve sonraki `.lock()` Hep Err verir — uygulama kendini
+/// kalıcı kilitlemiş olurdu. AppState'teki korunan veriler (SQLite bağlantısı,
+/// HashMap'ler) panikten sonra tutarsız sayılmaz; kurtarıp devam etmek,
+/// kalıcı kilitlenmeden iyidir. Etiket yalnızca stderr'e yazılır (gizli sır
+/// içermez).
+fn lock_or_recover<'a, T>(m: &'a std::sync::Mutex<T>, what: &str) -> std::sync::MutexGuard<'a, T> {
+    m.lock().unwrap_or_else(|poisoned| {
+        eprintln!("[gitorbit] {what} mutex poison — kurtarma ile devam ediliyor");
+        poisoned.into_inner()
+    })
+}
+
 fn with_db<F, T>(state: &State<AppState>, f: F) -> CmdResult<T>
 where
     F: FnOnce(&Database) -> Result<T, CommandError>,
 {
-    let db = state
-        .db
-        .lock()
-        .map_err(|_| AppError::simple("DATABASE_ERROR", "Veritabani kilidi alinamadi.", false))?;
+    // GO-15c: poison tek örnekli uygulamada kalıcı felç demekti — bkz. lock_or_recover.
+    let db = lock_or_recover(&state.db, "db");
     f(&db).map_err(AppError::from)
 }
 
@@ -803,10 +814,7 @@ async fn github_begin_login(app: AppHandle) -> CmdResult<DeviceFlowSession> {
     offload(app, move |state| {
         let (session, pending) = state.github.begin_device_flow().map_err(AppError::from)?;
 
-        let mut flows = state
-            .pending_device_flow
-            .lock()
-            .map_err(|_| AppError::simple("INTERNAL_ERROR", "Oturum kilidi alınamadı.", false))?;
+        let mut flows = lock_or_recover(&state.pending_device_flow, "pending_device_flow");
         // Opportunistic GC: drop sessions whose user never finished the browser step.
         flows.retain(|_, p| !p.is_expired());
         // Keyed insert: a second concurrent login never evicts the first one.
@@ -826,17 +834,13 @@ async fn github_begin_login(app: AppHandle) -> CmdResult<DeviceFlowSession> {
 #[tauri::command]
 async fn github_poll_login(app: AppHandle, session_token: String) -> CmdResult<PollResult> {
     offload(app, move |state| {
-        let db = state.db.lock().map_err(|_| {
-            AppError::simple("DATABASE_ERROR", "Veritabanı kilidi alınamadı.", false)
-        })?;
+        let db = lock_or_recover(&state.db, "db");
 
         // Take this session's pending flow out of the map. `PendingDeviceFlow` is
         // not Clone, so we remove → poll → re-insert only if still pending. This
         // also guarantees the session is dropped on success, expiry or denial.
         let pending = {
-            let mut flows = state.pending_device_flow.lock().map_err(|_| {
-                AppError::simple("INTERNAL_ERROR", "Oturum kilidi alınamadı.", false)
-            })?;
+            let mut flows = lock_or_recover(&state.pending_device_flow, "pending_device_flow");
             flows.retain(|_, p| !p.is_expired());
             flows.remove(&session_token).ok_or_else(|| {
                 AppError::simple(
@@ -939,10 +943,7 @@ async fn github_publish_repository(
 ) -> CmdResult<GitHubPublishResult> {
     offload(app, move |state| {
         let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
-        let db = state
-            .db
-            .lock()
-            .map_err(|_| AppError::simple("DATABASE_ERROR", "Veritabanı kilidi alınamadı.", false))?;
+        let db = lock_or_recover(&state.db, "db");
 
         // 1. Fail fast BEFORE creating anything on GitHub.
         let record = RepositoryService::get_repository(&db, &repo_id).map_err(AppError::from)?;
