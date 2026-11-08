@@ -8,7 +8,7 @@
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist",
-    "additional-watch-directories": [
+    "additionalWatchFolders": [
       "../crates"
     ]
   },
