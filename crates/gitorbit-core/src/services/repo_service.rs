@@ -147,7 +147,11 @@ impl RepositoryService {
     }
 
     /// v0.2 madde 10 — sabitleme bayrağını günceller ve güncel kaydı döner.
-    pub fn set_pinned(db: &Database, id: &str, pinned: bool) -> Result<RepositoryRecord, CommandError> {
+    pub fn set_pinned(
+        db: &Database,
+        id: &str,
+        pinned: bool,
+    ) -> Result<RepositoryRecord, CommandError> {
         let repo = Self::get_repository(db, id)?;
         db.with_conn(|conn| RepositoryDao::set_pinned(conn, &repo.id, pinned))?;
         Self::get_repository(db, id)
@@ -617,7 +621,8 @@ impl RepositoryService {
     ) -> Result<GitStatus, CommandError> {
         let repo = Self::get_repository(db, repo_id)?;
         let path = Path::new(&repo.canonical_path);
-        let status = GitRemoteManager::push(path, remote, branch, force, set_upstream, access_token)?;
+        let status =
+            GitRemoteManager::push(path, remote, branch, force, set_upstream, access_token)?;
         if let Some(ref b) = status.branch {
             let _ = db.with_conn(|conn| {
                 RepositoryDao::update_current_branch(conn, repo_id, Some(b.as_str()))
@@ -663,16 +668,15 @@ impl RepositoryService {
         )
     }
 
-    pub fn stash_list(db: &Database, repo_id: &str) -> Result<Vec<crate::models::StashEntry>, CommandError> {
+    pub fn stash_list(
+        db: &Database,
+        repo_id: &str,
+    ) -> Result<Vec<crate::models::StashEntry>, CommandError> {
         let record = Self::get_repository(db, repo_id)?;
         crate::git::GitStashManager::list(Path::new(&record.canonical_path))
     }
 
-    pub fn stash_apply(
-        db: &Database,
-        repo_id: &str,
-        id: &str,
-    ) -> Result<GitStatus, CommandError> {
+    pub fn stash_apply(db: &Database, repo_id: &str, id: &str) -> Result<GitStatus, CommandError> {
         let record = Self::get_repository(db, repo_id)?;
         crate::git::GitStashManager::apply_or_pop(Path::new(&record.canonical_path), id, "apply")
     }

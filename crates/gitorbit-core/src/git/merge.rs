@@ -221,10 +221,7 @@ impl GitMergeManager {
             .map_err(|e| CommandError::io_error(format!("Geçersiz depo dizini: {}", e)))?;
         let path = path.trim();
 
-        if path.is_empty()
-            || path.starts_with('-')
-            || path.starts_with('/')
-            || path.contains("..")
+        if path.is_empty() || path.starts_with('-') || path.starts_with('/') || path.contains("..")
         {
             return Err(CommandError::new(
                 "VALIDATION_ERROR",

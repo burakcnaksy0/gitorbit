@@ -52,7 +52,10 @@ impl SyncSkipReason {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", tag = "action")]
 pub enum SyncPlanEntry {
-    Run { repo_id: String, name: String },
+    Run {
+        repo_id: String,
+        name: String,
+    },
     Skip {
         repo_id: String,
         name: String,

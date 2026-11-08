@@ -1,8 +1,8 @@
 //! v0.2 konfor paketi entegrasyon testleri — ignore + stash akışları.
 
+use gitorbit_core::RepositoryOperationState;
 use gitorbit_core::db::Database;
 use gitorbit_core::services::RepositoryService;
-use gitorbit_core::RepositoryOperationState;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -267,17 +267,17 @@ fn amend_message_rejects_unborn_and_pushed_commits() {
     run_cmd(&repo, &["add", "README.md"]);
     run_cmd(&repo, &["commit", "-m", "eski mesaj"]);
     let res = RepositoryService::amend_message(&db, &id, "  yeni mesaj  ").unwrap();
-    assert_eq!(
-        run_cmd(&repo, &["log", "-1", "--format=%s"]),
-        "yeni mesaj"
-    );
+    assert_eq!(run_cmd(&repo, &["log", "-1", "--format=%s"]), "yeni mesaj");
     assert!(!res.commit_sha.is_empty());
 
     // Push edildikten sonra reddedilmeli.
     let origin = temp.path().join("origin.git");
     fs::create_dir_all(&origin).unwrap();
     run_cmd(&origin, &["init", "--bare"]);
-    run_cmd(&repo, &["remote", "add", "origin", origin.to_str().unwrap()]);
+    run_cmd(
+        &repo,
+        &["remote", "add", "origin", origin.to_str().unwrap()],
+    );
     run_cmd(&repo, &["push", "-u", "origin", "main"]);
     let err = RepositoryService::amend_message(&db, &id, "riskli rewrite").unwrap_err();
     assert_eq!(err.code, "AMEND_PUSHED");
@@ -302,14 +302,14 @@ fn amend_message_never_includes_staged_content() {
 
     RepositoryService::amend_message(&db, &id, "mesaj duzeltildi").unwrap();
 
-    assert_eq!(run_cmd(&repo, &["log", "-1", "--format=%s"]), "mesaj duzeltildi");
+    assert_eq!(
+        run_cmd(&repo, &["log", "-1", "--format=%s"]),
+        "mesaj duzeltildi"
+    );
     assert_eq!(run_cmd(&repo, &["rev-list", "--count", "HEAD"]), before);
     let status = RepositoryService::get_repository_status(&db, &id).unwrap();
     assert!(
-        status
-            .staged_files
-            .iter()
-            .any(|f| f.path == "yeni.txt"),
+        status.staged_files.iter().any(|f| f.path == "yeni.txt"),
         "staged dosya amend sonrasi yerinde kalmali"
     );
     // Uzak hic yokken de amend serbest (ahead mantigi upstream'siz dallarda
@@ -337,7 +337,10 @@ fn history_returns_graph_rows_and_ref_decorations() {
     fs::write(repo.join("m.txt"), "m\n").unwrap();
     run_cmd(&repo, &["add", "m.txt"]);
     run_cmd(&repo, &["commit", "-m", "main isi"]);
-    run_cmd(&repo, &["merge", "--no-ff", "feature", "-m", "merge feature"]);
+    run_cmd(
+        &repo,
+        &["merge", "--no-ff", "feature", "-m", "merge feature"],
+    );
     run_cmd(&repo, &["tag", "v1.0"]);
 
     let db = Database::in_memory().unwrap();
@@ -407,10 +410,9 @@ fn resolve_conflict_rejects_wrong_state_and_paths() {
     let id = register(&db, &repo);
 
     // Cakisma ortasinda cakismali olmayan yol reddedilir.
-    let err = gitorbit_core::services::RepositoryService::resolve_conflict(
-        &db, &id, "README.md", true,
-    )
-    .unwrap_err();
+    let err =
+        gitorbit_core::services::RepositoryService::resolve_conflict(&db, &id, "README.md", true)
+            .unwrap_err();
     assert_eq!(err.code, "NOT_CONFLICTED");
 
     // Girdi dogrulamasi: bayrak enjeksiyonu / mutlak yol / bos.
@@ -433,20 +435,33 @@ fn resolve_conflict_full_flow_ours_theirs_continue() {
     let id = register(&db, &repo);
 
     let status = RepositoryService::get_repository_status(&db, &id).unwrap();
-    assert_eq!(status.operation_state, RepositoryOperationState::MergeInProgress);
-    assert!(status.conflicted_files.contains(&"conflict.txt".to_string()));
+    assert_eq!(
+        status.operation_state,
+        RepositoryOperationState::MergeInProgress
+    );
+    assert!(
+        status
+            .conflicted_files
+            .contains(&"conflict.txt".to_string())
+    );
 
     // "Bizim" taraf secilip stage'lenir.
-    let status =
-        gitorbit_core::services::RepositoryService::resolve_conflict(&db, &id, "conflict.txt", true)
-            .unwrap();
+    let status = gitorbit_core::services::RepositoryService::resolve_conflict(
+        &db,
+        &id,
+        "conflict.txt",
+        true,
+    )
+    .unwrap();
     assert!(
         status.conflicted_files.is_empty(),
         "cozum sonrasi cakismali dosya kalmamali: {:?}",
         status.conflicted_files
     );
     assert_eq!(
-        fs::read_to_string(repo.join("conflict.txt")).unwrap().trim(),
+        fs::read_to_string(repo.join("conflict.txt"))
+            .unwrap()
+            .trim(),
         "bizim degisikligimiz"
     );
 
@@ -463,7 +478,10 @@ fn resolve_conflict_full_flow_ours_theirs_continue() {
 
     // Normal duruma donuldugu icin artik resolve reddedilir.
     let err = gitorbit_core::services::RepositoryService::resolve_conflict(
-        &db, &id, "conflict.txt", false,
+        &db,
+        &id,
+        "conflict.txt",
+        false,
     )
     .unwrap_err();
     assert_eq!(err.code, "INVALID_STATE");
@@ -481,7 +499,98 @@ fn resolve_conflict_theirs_side_wins() {
     gitorbit_core::services::RepositoryService::resolve_conflict(&db, &id, "conflict.txt", false)
         .unwrap();
     assert_eq!(
-        fs::read_to_string(repo.join("conflict.txt")).unwrap().trim(),
+        fs::read_to_string(repo.join("conflict.txt"))
+            .unwrap()
+            .trim(),
         "onlarin degisikligi"
     );
+}
+
+// ---------------------------------------------------------------------------
+// v0.2.1 denetim regresyonları — GO-07c (worktree'de .git DOSYADIR)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn ignore_local_scope_works_in_linked_worktree() {
+    // GO-07c: linked worktree'da <worktree>/.git bir DOSYADIR (gitdir: ...).
+    // Eski yol "<repo>/.git/info/exclude" dizyleyip create_dir_all ile
+    // ENOTDIR'e çarpıyordu. Artık git dizini `rev-parse` ile çözülür.
+    let temp = tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    init_repo(&repo);
+    run_cmd(&repo, &["branch", "feature"]);
+
+    let wt = temp.path().join("wt");
+    run_cmd(&repo, &["worktree", "add", wt.to_str().unwrap(), "feature"]);
+
+    // Kanıt: worktree'de .git bir dosya (klasik hatanın tetikleyicisi)
+    assert!(
+        wt.join(".git").is_file(),
+        "worktree .git dosyası beklenirdi"
+    );
+
+    let db = Database::in_memory().unwrap();
+    let id = register(&db, &wt);
+
+    fs::write(wt.join("gizli.env"), "S=1").unwrap();
+    let res = RepositoryService::ignore_file(&db, &id, "gizli.env", "local").unwrap();
+    assert!(!res.already_present);
+
+    // Desen worktree gitdir'inin info/exclude'una yazılmış olmalı ve
+    // gerçekten etkili olmalı (ignore_file içindeki check-ignore doğrulaması
+    // etkisizse zaten hata dönerdi — burada son kullanıcı gözünden doğrula).
+    let status = RepositoryService::get_repository_status(&db, &id).unwrap();
+    assert!(
+        status.untracked_files.iter().all(|f| f.path != "gizli.env"),
+        "worktree local-ignore etkili olmadı: {:?}",
+        status
+            .untracked_files
+            .iter()
+            .map(|f| &f.path)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn status_parses_renames_and_paths_with_spaces() {
+    // R-06 regresyonu: tek `--porcelain=v2 --branch` yolunda rename (2) ve
+    // boşluklu/untracked yollar (?) doğru sınıflanmalı; boşluklu yolda
+    // alan-ofsetleri kaymamalı.
+    let temp = tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    init_repo(&repo); // README.md commit'li
+
+    // staged rename + boşluk isimli dizinde untracked + boşluklu dosya
+    run_cmd(&repo, &["mv", "README.md", "docs readme.md"]);
+    fs::create_dir_all(repo.join("dir name")).unwrap();
+    fs::write(repo.join("dir name/file name.txt"), "x").unwrap();
+
+    let db = Database::in_memory().unwrap();
+    let id = register(&db, &repo);
+    let status = RepositoryService::get_repository_status(&db, &id).unwrap();
+
+    assert!(
+        status
+            .staged_files
+            .iter()
+            .any(|f| f.path == "docs readme.md" && f.old_path.as_deref() == Some("README.md")),
+        "rename yakalanmadı: {:?}",
+        status.staged_files
+    );
+    assert!(
+        status
+            .untracked_files
+            .iter()
+            .any(|f| f.path == "dir name/file name.txt"),
+        "boşluklu untracked yol kayboldu: {:?}",
+        status
+            .untracked_files
+            .iter()
+            .map(|f| &f.path)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(status.branch.as_deref(), Some("main"));
+    assert!(!status.is_detached_head);
 }

@@ -94,14 +94,7 @@ impl GitConfigManager {
         );
         GitAdapter::execute_with_env_and_timeout(
             repo_dir,
-            &[
-                "filter-branch",
-                "-f",
-                "--env-filter",
-                FILTER,
-                "--",
-                "--all",
-            ],
+            &["filter-branch", "-f", "--env-filter", FILTER, "--", "--all"],
             &[
                 ("FILTER_BRANCH_SQUELCH_WARNING", "1"),
                 ("GITORBIT_FROM_EMAIL", from_email),

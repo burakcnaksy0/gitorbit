@@ -19,7 +19,7 @@ pub use clone::GitCloneManager;
 pub use commit::GitCommitManager;
 pub use config::GitConfigManager;
 pub use diff::GitDiffParser;
-pub use graph::{compute_lanes, color_index_for, GraphEdge, GraphEdgeKind, GraphRow};
+pub use graph::{GraphEdge, GraphEdgeKind, GraphRow, color_index_for, compute_lanes};
 pub use history::GitHistoryManager;
 pub use ignore::GitIgnoreManager;
 pub use merge::GitMergeManager;

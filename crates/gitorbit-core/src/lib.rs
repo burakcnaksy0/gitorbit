@@ -14,12 +14,12 @@ pub mod sync;
 pub use credential_store::{CredentialStore, OsCredentialStore};
 pub use db::Database;
 pub use errors::CommandError;
+pub use git::graph::{GraphEdge, GraphEdgeKind, GraphRow, color_index_for, compute_lanes};
 pub use git::{
     GitAdapter, GitBranchManager, GitCommitManager, GitConfigManager, GitDiffParser,
     GitHistoryManager, GitIgnoreManager, GitMergeManager, GitOperationStateManager,
     GitRemoteManager, GitStashManager, GitStatusParser,
 };
-pub use git::graph::{compute_lanes, color_index_for, GraphEdge, GraphEdgeKind, GraphRow};
 pub use models::*;
 pub use services::github_service::PendingDeviceFlow;
 pub use services::{

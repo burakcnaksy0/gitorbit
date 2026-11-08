@@ -28,7 +28,15 @@ impl GitDiffParser {
             vec!["diff", "--", file_path]
         };
 
-        let output = GitAdapter::execute(repo_dir, &args)?;
+        // GO-04c: çıktı belleğe SINIRLI alınır — eski yol tüm diff'i (devasa
+        // çalıştırma çıktısı, -A'lı log dosyası…) tampona aldıktan SONRA
+        // boyuta bakıyordu. Artık cap aşanı diske hiç inmez, sayılır ve geçer.
+        let (output, truncated, raw_size) = GitAdapter::execute_capped(
+            repo_dir,
+            &args,
+            MAX_DIFF_BYTES,
+            std::time::Duration::from_secs(30),
+        )?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -39,11 +47,9 @@ impl GitDiffParser {
             ));
         }
 
-        let raw_size = output.stdout.len();
-
         // Detect binary files from git's output
         // git outputs "Binary files a/... and b/... differ\n" for binary diffs
-        let raw_preview = String::from_utf8_lossy(&output.stdout[..raw_size.min(256)]);
+        let raw_preview = String::from_utf8_lossy(&output.stdout[..output.stdout.len().min(256)]);
         if raw_preview.contains("Binary files") {
             return Ok(DiffOutput {
                 path: file_path.to_string(),
@@ -55,7 +61,7 @@ impl GitDiffParser {
         }
 
         // Size guard: return truncated without parsing
-        if raw_size > MAX_DIFF_BYTES {
+        if truncated || raw_size > MAX_DIFF_BYTES {
             return Ok(DiffOutput {
                 path: file_path.to_string(),
                 truncated: true,
@@ -79,29 +85,43 @@ impl GitDiffParser {
     }
 
     /// Parses unified diff text into structured `FileDiffLine` values.
+    ///
+    /// GO-08c: `--- `/`+++ ` ön ekleri YALNIZCA hunk gövdesi dışında dosya
+    /// başlığıdır. Hunk içinde böyle görünen satırlar GERÇEK içerik satırıdır
+    /// (silinmiş satır içeriği `-- foo` ise düz diff çıktısı `--- foo` olur,
+    /// eklenen `+ foo` içeriği `+++ foo` olur) ve Removed/Added sayılmalı —
+    /// eski yol bu satırları Header sanıp satır numaralarını kaydırıyordu.
     fn parse_unified_diff(text: &str) -> Vec<FileDiffLine> {
         let mut result = Vec::new();
         let mut old_line: u32 = 0;
         let mut new_line: u32 = 0;
+        // Hunk gövdesinde miyiz? `@@` ile girer, yeni `diff ` başlığı sıfırlar.
+        let mut in_hunk = false;
 
         for line in text.lines() {
-            if line.starts_with("diff ")
-                || line.starts_with("index ")
-                || line.starts_with("--- ")
-                || line.starts_with("+++ ")
-            {
+            if line.starts_with("diff ") {
+                in_hunk = false;
+            }
+
+            let header_like = !in_hunk
+                && (line.starts_with("index ")
+                    || line.starts_with("--- ")
+                    || line.starts_with("+++ "));
+
+            if header_like || line.starts_with("diff ") {
                 result.push(FileDiffLine {
                     kind: DiffLineKind::Header,
                     content: line.to_string(),
                     old_line_no: None,
                     new_line_no: None,
                 });
-            } else if line.starts_with("@@ ") {
-                // Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
+            } else if line.starts_with("@@ -") {
+                // Hunk header: @@ -old_start,old_count +new_start,new_count @@
                 if let Some((o, n)) = Self::parse_hunk_header(line) {
                     old_line = o.saturating_sub(1);
                     new_line = n.saturating_sub(1);
                 }
+                in_hunk = true;
                 result.push(FileDiffLine {
                     kind: DiffLineKind::Hunk,
                     content: line.to_string(),

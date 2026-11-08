@@ -243,8 +243,7 @@ impl GitCommitManager {
             &["branch", "--remotes", "--contains", "HEAD"],
             COMMIT_TIMEOUT,
         )?;
-        Ok(output.status.success()
-            && !String::from_utf8_lossy(&output.stdout).trim().is_empty())
+        Ok(output.status.success() && !String::from_utf8_lossy(&output.stdout).trim().is_empty())
     }
 
     /// Son commit'in **yalnızca mesajını** yeniden yazar (`commit --amend --only`).
@@ -255,10 +254,7 @@ impl GitCommitManager {
     /// - Son commit upstream'e (veya herhangi bir uzak dalın tarihçesine)
     ///   ulaşmışsa `AMEND_PUSHED` ile reddedilir.
     /// - Unborn HEAD / detached HEAD reddedilir.
-    pub fn amend_message(
-        repo_dir: &Path,
-        new_message: &str,
-    ) -> Result<CommitResult, CommandError> {
+    pub fn amend_message(repo_dir: &Path, new_message: &str) -> Result<CommitResult, CommandError> {
         let canonical_repo = repo_dir
             .canonicalize()
             .map_err(|e| CommandError::io_error(format!("Geçersiz depo dizini: {}", e)))?;
@@ -354,10 +350,22 @@ mod amend_tests {
     #[test]
     fn amend_guard_requires_unpushed_head() {
         // Upstream var: ahead>0 ise son commit upstream'de değil → serbest.
-        assert!(GitCommitManager::amend_allowed(Some("origin/main"), 1, false));
-        assert!(GitCommitManager::amend_allowed(Some("origin/main"), 7, false));
+        assert!(GitCommitManager::amend_allowed(
+            Some("origin/main"),
+            1,
+            false
+        ));
+        assert!(GitCommitManager::amend_allowed(
+            Some("origin/main"),
+            7,
+            false
+        ));
         // ahead == 0 → son commit push edilmiş → reddedilir.
-        assert!(!GitCommitManager::amend_allowed(Some("origin/main"), 0, false));
+        assert!(!GitCommitManager::amend_allowed(
+            Some("origin/main"),
+            0,
+            false
+        ));
         // Upstream yok ama HEAD baska bir uzak dalda → reddedilir.
         assert!(!GitCommitManager::amend_allowed(None, 0, true));
         // Tamamen yerel dal → serbest.
@@ -383,7 +391,12 @@ mod tests {
     #[test]
     fn go05c_control_characters_rejected() {
         // NUL, Bell, CR, ESC (ANSI kaçış dizilerinin başlangıcı) reddedilmeli
-        for bad in ["a\u{0}b", "risk\u{7}", "satır\u{d}sonu", "\u{1b}[31mkırmızı\u{1b}[0m"] {
+        for bad in [
+            "a\u{0}b",
+            "risk\u{7}",
+            "satır\u{d}sonu",
+            "\u{1b}[31mkırmızı\u{1b}[0m",
+        ] {
             let err = validate_commit_message(bad).expect_err("kontrol karakteri geçmemeli");
             assert_eq!(err.code, "VALIDATION_ERROR");
         }

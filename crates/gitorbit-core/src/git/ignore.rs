@@ -33,13 +33,37 @@ impl GitIgnoreManager {
             .any(|line| line.trim() == pattern && !pattern.is_empty())
     }
 
+    /// `info/exclude`'un GERÇEK ev sahibi git dizini: tekil repoda `.git`,
+    /// linked worktree/submodule'da ORTAK dizin (`--git-common-dir`).
+    /// Eski git'lerde common-dir anahtarı yoksa `--git-dir`'e düşülür.
+    fn resolve_common_git_dir(repo_dir: &Path) -> Option<std::path::PathBuf> {
+        for arg in ["--git-common-dir", "--git-dir"] {
+            if let Ok(out) =
+                GitAdapter::execute_with_timeout(repo_dir, &["rev-parse", arg], WRITE_TIMEOUT)
+                && out.status.success()
+            {
+                let raw = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if raw.is_empty() {
+                    continue;
+                }
+                let p = if std::path::Path::new(&raw).is_absolute() {
+                    std::path::PathBuf::from(raw)
+                } else {
+                    repo_dir.join(raw)
+                };
+                // Git 2.31 öncesi common-dir, worktree'da yanlış adres
+                // verebiliyordu; klasör değilse sıradaki anahtarı dene.
+                if p.is_dir() {
+                    return Some(p);
+                }
+            }
+        }
+        None
+    }
+
     /// `path` depo-yolundaki öğeyi `scope` kapsamlı ignore dosyasına ekler.
     /// `scope`: `"repo"` → `.gitignore`, `"local"` → `.git/info/exclude`.
-    pub fn ignore(
-        repo_dir: &Path,
-        path: &str,
-        scope: &str,
-    ) -> Result<IgnoredFile, CommandError> {
+    pub fn ignore(repo_dir: &Path, path: &str, scope: &str) -> Result<IgnoredFile, CommandError> {
         let canonical_repo = repo_dir
             .canonicalize()
             .map_err(|e| CommandError::io_error(format!("Geçersiz depo dizini: {}", e)))?;
@@ -92,7 +116,27 @@ impl GitIgnoreManager {
             ));
         }
 
-        let target = canonical_repo.join(target_rel);
+        // GO-07c: "local" hedefi asla <repo>/.git/... DİZEYLENEMEZ — linked
+        // worktree/submodule'da .git bir DOSYADIR (gitdir: ...) ve
+        // create_dir_all("<repo>/.git/info") ENOTDIR ile patlar. Gerçek git
+        // dizinini git'in kendisine soruyoruz. İkinci tuzak: worktree'da
+        // info/exclude PER-WORKTREE gitdir'den DEĞİL, ortak dizinden
+        // (--git-common-dir) okunur — yanlış yere yazmak sessizce etkisiz
+        // kalırdı (check-ignore doğrulaması bunu IGNORE_INEFFECTIVE ile yakalar).
+        let target = match scope {
+            "repo" | "" => canonical_repo.join(target_rel),
+            "local" => match Self::resolve_common_git_dir(&canonical_repo) {
+                Some(git_dir) => git_dir.join("info").join("exclude"),
+                None => {
+                    return Err(CommandError::new(
+                        "INVALID_STATE",
+                        "Deponun git dizini çözülemedi; yerel yoksayma yazılamadı.",
+                        true,
+                    ));
+                }
+            },
+            _ => unreachable!("scope yukarıda doğrulandı"),
+        };
         let existing = std::fs::read_to_string(&target).unwrap_or_default();
         if Self::pattern_present(&existing, &pattern) {
             return Ok(IgnoredFile {
@@ -120,9 +164,8 @@ impl GitIgnoreManager {
                 CommandError::io_error(format!("Yoksayma dosyası dizini oluşturulamadı: {}", e))
             })?;
         }
-        std::fs::write(&target, content).map_err(|e| {
-            CommandError::io_error(format!("Yoksayma dosyasına yazılamadı: {}", e))
-        })?;
+        std::fs::write(&target, content)
+            .map_err(|e| CommandError::io_error(format!("Yoksayma dosyasına yazılamadı: {}", e)))?;
 
         // Diske yazıldı; dosyanın gerçekten yoksayılıp yoksayılmadığını git'e
         // sor (mevcut desen/çelişki durumlarında kullanıcıyu yanıltma).

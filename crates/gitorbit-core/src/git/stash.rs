@@ -178,16 +178,17 @@ impl GitStashManager {
         Self::list(&canonical_repo)
     }
 
-    fn check_success(
-        output: &std::process::Output,
-        context: &str,
-    ) -> Result<(), CommandError> {
+    fn check_success(output: &std::process::Output, context: &str) -> Result<(), CommandError> {
         if output.status.success() {
             return Ok(());
         }
         Err(CommandError::new(
             "GIT_COMMAND_FAILED",
-            format!("{} {}", context, String::from_utf8_lossy(&output.stderr).trim()),
+            format!(
+                "{} {}",
+                context,
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
             true,
         ))
     }

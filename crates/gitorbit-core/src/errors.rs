@@ -372,7 +372,9 @@ mod tests {
     #[test]
     fn redacts_pat_embedded_as_https_userinfo() {
         // GO-06c: ':' İÇERMEYEN userinfo (doğrudan PAT) de maskelenmeli
-        let redacted = redact_sensitive("fatal: access to https://ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12@github.com/org/repo.git denied");
+        let redacted = redact_sensitive(
+            "fatal: access to https://ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef12@github.com/org/repo.git denied",
+        );
         assert!(!redacted.contains("ghp_ABCDEFGHIJ"));
         assert!(redacted.contains("https://***@github.com"));
         // ssh:// düz kullanıcı adı korunur

@@ -90,13 +90,10 @@ pub fn compute_lanes(entries: &[(String, Vec<String>)]) -> Vec<GraphRow> {
                 let target = match existing {
                     Some(k) if k != lane => k,
                     _ => {
-                        let k = lanes
-                            .iter()
-                            .position(|l| l.is_none())
-                            .unwrap_or_else(|| {
-                                lanes.push(None);
-                                lanes.len() - 1
-                            });
+                        let k = lanes.iter().position(|l| l.is_none()).unwrap_or_else(|| {
+                            lanes.push(None);
+                            lanes.len() - 1
+                        });
                         lanes[k] = Some(parent.clone());
                         k
                     }
@@ -142,7 +139,7 @@ pub fn color_index_for(sha: &str) -> usize {
 
 #[cfg(test)]
 mod graph_tests {
-    use super::{compute_lanes, color_index_for, GraphEdgeKind};
+    use super::{GraphEdgeKind, color_index_for, compute_lanes};
 
     fn e(sha: &str, parents: &[&str]) -> (String, Vec<String>) {
         (
@@ -169,7 +166,12 @@ mod graph_tests {
         //   B    (feature)
         //   |
         //   M    (merge commit, en yeni)
-        let rows = compute_lanes(&[e("M", &["A", "B"]), e("A", &["X"]), e("B", &["X"]), e("X", &[])]);
+        let rows = compute_lanes(&[
+            e("M", &["A", "B"]),
+            e("A", &["X"]),
+            e("B", &["X"]),
+            e("X", &[]),
+        ]);
 
         // M: lane 0; ikinci ebeven B icin lane 1 acilir → BranchOut 0→1.
         assert_eq!(rows[0].lane, 0);
@@ -188,9 +190,12 @@ mod graph_tests {
         // B kendi seridinden iner; ebeveyni X zaten lane 0'da izleniyor →
         // B'nin ebeveyn çizgisi lane 1'den lane 0'a kavusur (duplicate satir yok).
         assert_eq!(rows[2].lane, 1);
-        assert!(rows[2].edges.iter().any(|x| x.kind == GraphEdgeKind::BranchOut
-            && x.from_lane == 1
-            && x.to_lane == 0));
+        assert!(
+            rows[2]
+                .edges
+                .iter()
+                .any(|x| x.kind == GraphEdgeKind::BranchOut && x.from_lane == 1 && x.to_lane == 0)
+        );
 
         // X artik tek seritte yasar.
         assert_eq!(rows[3].lane, 0);

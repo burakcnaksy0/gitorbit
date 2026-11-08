@@ -1,6 +1,7 @@
 #![allow(clippy::result_large_err)]
 
 use gitorbit_core::CommandError;
+use gitorbit_core::CredentialStore;
 /// Faz 6 acceptance tests — GitHub account management and repository API.
 ///
 /// These tests use in-memory credential store and mock HTTP client,
@@ -15,7 +16,6 @@ use gitorbit_core::CommandError;
 /// - AC6: Repository listing respects pagination
 /// - AC7: Device-flow expiry is detected
 use gitorbit_core::credential_store::InMemoryCredentialStore;
-use gitorbit_core::CredentialStore;
 use gitorbit_core::db::Database;
 use gitorbit_core::models::{GitHubConnectionStatus, PollResult};
 use gitorbit_core::services::github_service::{
@@ -719,9 +719,16 @@ fn client_with_refresh_on_poll() -> MockGitHubHttpClient {
 }
 
 /// Log in with `svc`, returning the created account.
-fn login(svc: &GitHubService, db: &Database, pending: &PendingDeviceFlow) -> gitorbit_core::models::GitHubAccount {
+fn login(
+    svc: &GitHubService,
+    db: &Database,
+    pending: &PendingDeviceFlow,
+) -> gitorbit_core::models::GitHubAccount {
     let session_token = pending.session_token.clone();
-    match svc.poll_device_flow(db, pending, &session_token).expect("poll") {
+    match svc
+        .poll_device_flow(db, pending, &session_token)
+        .expect("poll")
+    {
         PollResult::Success { account } => *account,
         PollResult::Pending => panic!("Expected success"),
     }
@@ -802,7 +809,10 @@ fn test_refresh_flow_rejected_marks_auth_expired() {
         .set_credential("github:12345:refresh", "BAD_REFRESH")
         .expect("seed refresh");
 
-    let svc = GitHubService::new(Box::new(MockGitHubHttpClient::new_with_denied()), Box::new(store));
+    let svc = GitHubService::new(
+        Box::new(MockGitHubHttpClient::new_with_denied()),
+        Box::new(store),
+    );
 
     // Insert the account row directly (bypass device flow).
     let now = "2026-01-01T00:00:00+00:00".to_string();
@@ -837,7 +847,10 @@ fn test_refresh_flow_rejected_marks_auth_expired() {
         .into_iter()
         .find(|a| a.id == "acct-1")
         .expect("account");
-    assert_eq!(stored.connection_status, GitHubConnectionStatus::AuthExpired);
+    assert_eq!(
+        stored.connection_status,
+        GitHubConnectionStatus::AuthExpired
+    );
 }
 
 #[test]

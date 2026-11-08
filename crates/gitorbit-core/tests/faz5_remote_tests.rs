@@ -381,7 +381,8 @@ fn test_ac5_no_upstream_handling() {
     assert_eq!(pull_err.code, "NO_UPSTREAM");
 
     // 2. Push without upstream and without set_upstream should return NO_UPSTREAM
-    let push_err = RepositoryService::push(&db, &record.id, None, None, false, false, None).unwrap_err();
+    let push_err =
+        RepositoryService::push(&db, &record.id, None, None, false, false, None).unwrap_err();
     assert_eq!(push_err.code, "NO_UPSTREAM");
 }
 
@@ -486,21 +487,17 @@ fn test_add_remote_success_duplicate_and_invalid_url() {
     )
     .expect_err("gömülü token reddedilmeli");
     assert_eq!(err.code, "INVALID_PATH");
-    assert!(GitRemoteManager::add(
-        dir.path(),
-        "up",
-        "https://user:pass@github.com/user/r.git"
-    )
-    .is_err());
+    assert!(
+        GitRemoteManager::add(dir.path(), "up", "https://user:pass@github.com/user/r.git").is_err()
+    );
     // ssh:// düz kullanıcı adı SERBEST (o kimlik değil, hedef kullanıcısı)
     assert!(GitRemoteManager::add(dir.path(), "sshok", "ssh://git@github.com/user/r.git").is_ok());
     // ssh:// içinde user:pass yine reddedilir
-    assert!(GitRemoteManager::add(dir.path(), "sshx", "ssh://bob:pass@github.com/user/r.git")
-        .is_err());
-    // git@ scp biçimi serbest (kullanıcı adı "git", sır değil)
     assert!(
-        GitRemoteManager::add(dir.path(), "scpos", "git@github.com:user/scpos.git").is_ok()
+        GitRemoteManager::add(dir.path(), "sshx", "ssh://bob:pass@github.com/user/r.git").is_err()
     );
+    // git@ scp biçimi serbest (kullanıcı adı "git", sır değil)
+    assert!(GitRemoteManager::add(dir.path(), "scpos", "git@github.com:user/scpos.git").is_ok());
 }
 
 // ---------------------------------------------------------------------------
@@ -515,7 +512,6 @@ fn pull_branch_without_remote_uses_default_remote() {
     let temp_root = tempdir().unwrap();
     let bare_dir = temp_root.path().join("bare.git");
     let repo_a = temp_root.path().join("a");
-    let repo_b = temp_root.path().join("b");
     for d in [&bare_dir, &repo_a] {
         fs::create_dir_all(d).unwrap();
     }
@@ -525,12 +521,18 @@ fn pull_branch_without_remote_uses_default_remote() {
     fs::write(repo_a.join("README.md"), "init\n").unwrap();
     run_cmd(&repo_a, &["add", "README.md"]);
     run_cmd(&repo_a, &["commit", "-m", "init"]);
-    run_cmd(&repo_a, &["remote", "add", "origin", bare_dir.to_str().unwrap()]);
+    run_cmd(
+        &repo_a,
+        &["remote", "add", "origin", bare_dir.to_str().unwrap()],
+    );
     // -u YOK: upstream tanımsız kalsın (testin özü)
     run_cmd(&repo_a, &["push", "origin", "main"]);
 
     // repo_b ile remote'a yeni commit (clone hedef dizini kendisi oluşturur)
-    run_cmd(temp_root.path(), &["clone", bare_dir.to_str().unwrap(), "b"]);
+    run_cmd(
+        temp_root.path(),
+        &["clone", bare_dir.to_str().unwrap(), "b"],
+    );
     let repo_b = temp_root.path().join("b");
     fs::write(repo_b.join("yeni.txt"), "b commit\n").unwrap();
     run_cmd(&repo_b, &["add", "yeni.txt"]);
@@ -543,9 +545,8 @@ fn pull_branch_without_remote_uses_default_remote() {
     let record = RepositoryService::add_repository(&db, repo_a.to_str().unwrap()).unwrap();
 
     // remote=None, branch=Some("main") → eski davranışta NO_UPSTREAM
-    let status =
-        RepositoryService::pull(&db, &record.id, None, Some("main"), Some("merge"), None)
-            .expect("branch-only pull varsayılan remote ile çalışmalı");
+    let status = RepositoryService::pull(&db, &record.id, None, Some("main"), Some("merge"), None)
+        .expect("branch-only pull varsayılan remote ile çalışmalı");
     assert_eq!(status.behind, 0);
     assert!(repo_a.join("yeni.txt").exists());
 }
@@ -568,7 +569,10 @@ fn detached_head_push_and_pull_rejected_honestly() {
     run_cmd(&repo, &["commit", "-m", "c1"]);
     fs::write(repo.join("a.txt"), "2\n").unwrap();
     run_cmd(&repo, &["commit", "-am", "c2"]);
-    run_cmd(&repo, &["remote", "add", "origin", bare_dir.to_str().unwrap()]);
+    run_cmd(
+        &repo,
+        &["remote", "add", "origin", bare_dir.to_str().unwrap()],
+    );
     run_cmd(&repo, &["push", "-u", "origin", "main"]);
 
     let sha1 = String::from_utf8_lossy(
@@ -593,8 +597,7 @@ fn detached_head_push_and_pull_rejected_honestly() {
     assert_eq!(push_err.code, "INVALID_STATE");
     assert!(push_err.message.contains("Detached"));
 
-    let pull_err =
-        RepositoryService::pull(&db, &record.id, None, None, None, None).unwrap_err();
+    let pull_err = RepositoryService::pull(&db, &record.id, None, None, None, None).unwrap_err();
     assert_eq!(pull_err.code, "INVALID_STATE");
     assert!(pull_err.message.contains("Detached"));
 }

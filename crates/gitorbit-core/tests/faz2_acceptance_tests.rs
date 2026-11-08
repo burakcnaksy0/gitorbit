@@ -244,7 +244,11 @@ fn last_opened_at_throttled_on_status_reads() {
             .args(args)
             .output()
             .unwrap();
-        assert!(o.status.success(), "{args:?}: {}", String::from_utf8_lossy(&o.stderr));
+        assert!(
+            o.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&o.stderr)
+        );
     };
     run(&["init", "-b", "main"]);
     run(&["config", "user.name", "T"]);

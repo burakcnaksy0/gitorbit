@@ -266,7 +266,11 @@ mod tests {
             .unwrap();
 
         let list = db.with_conn(RepositoryDao::list).unwrap();
-        let pinned_ids: Vec<&str> = list.iter().filter(|r| r.pinned).map(|r| r.id.as_str()).collect();
+        let pinned_ids: Vec<&str> = list
+            .iter()
+            .filter(|r| r.pinned)
+            .map(|r| r.id.as_str())
+            .collect();
         assert_eq!(pinned_ids, vec!["r2"]);
 
         let fetched = db

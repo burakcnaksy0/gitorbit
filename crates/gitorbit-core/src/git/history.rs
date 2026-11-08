@@ -239,7 +239,9 @@ impl GitHistoryManager {
             .canonicalize()
             .map_err(|e| CommandError::io_error(format!("Geçersiz depo dizini: {}", e)))?;
 
-        let output = GitAdapter::execute(
+        // GO-04c: sınırlı okuma — devasa bir commit'in patch'i (ör. -A ile
+        // eklenmiş log) eski yolda ÖNCE tampona alınır, boyuta SONRA bakılırdı.
+        let (output, capped_truncated, raw_size) = GitAdapter::execute_capped(
             &canonical_repo,
             &[
                 "show",
@@ -249,6 +251,8 @@ impl GitHistoryManager {
                 "--no-ext-diff",
                 sha,
             ],
+            crate::git::diff::MAX_DIFF_BYTES,
+            std::time::Duration::from_secs(30),
         )?;
 
         if !output.status.success() {
@@ -260,8 +264,7 @@ impl GitHistoryManager {
             ));
         }
 
-        let raw_size = output.stdout.len();
-        let preview = String::from_utf8_lossy(&output.stdout[..raw_size.min(256)]);
+        let preview = String::from_utf8_lossy(&output.stdout[..output.stdout.len().min(256)]);
         if preview.contains("Binary files") {
             return Ok(crate::models::DiffOutput {
                 path: sha.to_string(),
@@ -271,7 +274,7 @@ impl GitHistoryManager {
                 raw_size,
             });
         }
-        if raw_size > crate::git::diff::MAX_DIFF_BYTES {
+        if capped_truncated || raw_size > crate::git::diff::MAX_DIFF_BYTES {
             return Ok(crate::models::DiffOutput {
                 path: sha.to_string(),
                 truncated: true,

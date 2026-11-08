@@ -341,3 +341,95 @@ fn test_parse_unified_diff_unit_ac10() {
         "Removed satir old_line_no 2 olmali"
     );
 }
+
+// ---------------------------------------------------------------------------
+// v0.2.1 denetim regresyonları — GO-08c (hunk içi "--- " satırı) /
+// GO-04c (sınırsız diff okuma)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn go08c_hunk_body_dashes_are_not_headers() {
+    // Silinen satır içeriği "-- kural" ise düz diff satırı "--- kural" olur;
+    // hunk GÖVDESİNDEYSE Removed olmalı (Header değil) ve satır numaraları
+    // kaymamalı. Aynı şekilde eklenen "+ x" içeriği "++ x" olarak Added'dir.
+    let text = "\
+diff --git a/f.md b/f.md
+index 1111111..2222222 100644
+--- a/f.md
++++ b/f.md
+@@ -1,3 +1,3 @@
+ merhaba
+--- kural
+++- kural
+ dünya
+";
+    let lines = GitDiffParser::parse_diff_text_for_test(text);
+    let removed = lines
+        .iter()
+        .filter(|l| l.kind == DiffLineKind::Removed)
+        .collect::<Vec<_>>();
+    let added = lines
+        .iter()
+        .filter(|l| l.kind == DiffLineKind::Added)
+        .collect::<Vec<_>>();
+    assert_eq!(removed.len(), 1, "hunk içi '--- ' Header oldu: {lines:?}");
+    assert_eq!(removed[0].content, "-- kural");
+    assert_eq!(removed[0].old_line_no, Some(2));
+    assert_eq!(added.len(), 1);
+    assert_eq!(added[0].content, "+- kural");
+    assert_eq!(added[0].new_line_no, Some(2));
+    // Bağlam satırı numaraları kaymadı: "dünya" eski=3 yeni=3
+    let ctx = lines
+        .iter()
+        .find(|l| l.kind == DiffLineKind::Context && l.content == "dünya")
+        .expect("bağlam satırı");
+    assert_eq!(ctx.old_line_no, Some(3));
+    assert_eq!(ctx.new_line_no, Some(3));
+    // Gerçek dosya başlıkları Header olarak kalmalı
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.kind == DiffLineKind::Header && l.content.starts_with("--- a/f.md"))
+    );
+}
+
+#[test]
+fn go04c_huge_diff_is_truncated_not_hung() {
+    // > MAX_DIFF_BYTES (512 KB) tek dosyalık unstaged diff: yanıt truncation
+    // bayrağıyla gelmeli, parse edilmemeli, süreç bloklanmamalı.
+    let (temp, repo) = setup_repo_with_commit();
+
+    let big = "x".repeat(700 * 1024);
+    fs::write(repo.join("buyuk.txt"), format!("base\n{big}\n")).unwrap();
+    let out = Command::new("git")
+        .current_dir(&repo)
+        .args(["add", "buyuk.txt"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let out = Command::new("git")
+        .current_dir(&repo)
+        .args(["commit", "-m", "buyuk eklenir"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    // Küçük bir satır ekle → unstaged diff ~700 KB (satır başına +/- ile daha da büyük)
+    fs::write(repo.join("buyuk.txt"), format!("BASE\n{big}\n")).unwrap();
+
+    let db_dir = temp.path().join("db");
+    fs::create_dir_all(&db_dir).unwrap();
+    let db = Database::open(&db_dir.join("t.db")).unwrap();
+    let rec = RepositoryService::add_repository(&db, repo.to_str().unwrap()).unwrap();
+
+    let diff = RepositoryService::get_file_diff(&db, &rec.id, "buyuk.txt", false).unwrap();
+    assert!(diff.truncated, "dev diff truncate edilmeli");
+    assert!(
+        diff.lines.is_empty(),
+        "truncate edilen diff parse edilmemeli"
+    );
+    assert!(
+        diff.raw_size > MAX_DIFF_BYTES,
+        "toplam boyut olduğu gibi raporlanmalı, alınamadı: {}",
+        diff.raw_size
+    );
+}

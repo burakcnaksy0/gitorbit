@@ -312,7 +312,8 @@ impl GitHubHttpClient for RealGitHubHttpClient {
         client_id: &str,
         scope: &str,
     ) -> Result<RawDeviceFlowResponse, CommandError> {
-        let resp = http_agent().post("https://github.com/login/device/code")
+        let resp = http_agent()
+            .post("https://github.com/login/device/code")
             .set("Accept", "application/json")
             .set("User-Agent", "GitOrbit/0.1")
             .send_form(&[("client_id", client_id), ("scope", scope)])
@@ -328,7 +329,8 @@ impl GitHubHttpClient for RealGitHubHttpClient {
         client_id: &str,
         device_code: &str,
     ) -> Result<RawPollResponse, CommandError> {
-        let resp = http_agent().post("https://github.com/login/oauth/access_token")
+        let resp = http_agent()
+            .post("https://github.com/login/oauth/access_token")
             .set("Accept", "application/json")
             .set("User-Agent", "GitOrbit/0.1")
             .send_form(&[
@@ -348,7 +350,8 @@ impl GitHubHttpClient for RealGitHubHttpClient {
         client_id: &str,
         refresh_token: &str,
     ) -> Result<RawRefreshResponse, CommandError> {
-        let resp = http_agent().post("https://github.com/login/oauth/access_token")
+        let resp = http_agent()
+            .post("https://github.com/login/oauth/access_token")
             .set("Accept", "application/json")
             .set("User-Agent", "GitOrbit/0.1")
             .send_form(&[
@@ -358,13 +361,13 @@ impl GitHubHttpClient for RealGitHubHttpClient {
             ])
             .map_err(map_ureq_error)?;
 
-        resp.into_json::<RawRefreshResponse>().map_err(|e| {
-            CommandError::network_error(format!("Yenileme yanıtı işlenemedi: {}", e))
-        })
+        resp.into_json::<RawRefreshResponse>()
+            .map_err(|e| CommandError::network_error(format!("Yenileme yanıtı işlenemedi: {}", e)))
     }
 
     fn get_authenticated_user(&self, token: &str) -> Result<RawUserResponse, CommandError> {
-        let resp = http_agent().get("https://api.github.com/user")
+        let resp = http_agent()
+            .get("https://api.github.com/user")
             .set("Authorization", &format!("Bearer {}", token))
             .set("Accept", "application/vnd.github+json")
             .set("X-GitHub-Api-Version", "2022-11-28")
@@ -387,7 +390,8 @@ impl GitHubHttpClient for RealGitHubHttpClient {
             "https://api.github.com/user/repos?page={}&per_page={}&sort=updated&affiliation=owner,collaborator,organization_member",
             page, per_page
         );
-        let resp = http_agent().get(&url)
+        let resp = http_agent()
+            .get(&url)
             .set("Authorization", &format!("Bearer {}", token))
             .set("Accept", "application/vnd.github+json")
             .set("X-GitHub-Api-Version", "2022-11-28")
@@ -415,7 +419,8 @@ impl GitHubHttpClient for RealGitHubHttpClient {
             "has_wiki": false,
         });
 
-        let resp = http_agent().post("https://api.github.com/user/repos")
+        let resp = http_agent()
+            .post("https://api.github.com/user/repos")
             .set("Authorization", &format!("Bearer {}", token))
             .set("Accept", "application/vnd.github+json")
             .set("X-GitHub-Api-Version", "2022-11-28")
@@ -583,7 +588,9 @@ impl GitHubService {
         // 2.5. GO-17c (RFC 8628): interval dolmadan gelen yoklama GitHub'a
         // İLETİLMEZ — yerel Pending. Hızlı tıklama/istemci hatası GitHub
         // oran-limit cezasına (slow_down/403) dönüşemez.
-        if pending.last_http_poll.get().elapsed() < Duration::from_secs(pending.current_interval_secs.get()) {
+        if pending.last_http_poll.get().elapsed()
+            < Duration::from_secs(pending.current_interval_secs.get())
+        {
             return Ok(PollResult::Pending);
         }
 
@@ -599,7 +606,9 @@ impl GitHubService {
                 // RFC 8628 §3.5: slow_down → bir sonraki denemeye kadar
                 // aralık 5 sn artırılır (RFK zorunluluğu, rica değil).
                 "slow_down" => {
-                    pending.current_interval_secs.set(pending.current_interval_secs.get() + 5);
+                    pending
+                        .current_interval_secs
+                        .set(pending.current_interval_secs.get() + 5);
                     Ok(PollResult::Pending)
                 }
                 "access_denied" => Err(CommandError::auth_required(
@@ -638,8 +647,8 @@ impl GitHubService {
                     // Uygulama artık refresh vermiyor: eski anahtar varsa sil.
                     let _ = self.store.delete_credential(&refresh_ref);
                 }
-                let token_expires_at = expires_in
-                    .map(|secs| (Utc::now() + Duration::from_secs(secs)).to_rfc3339());
+                let token_expires_at =
+                    expires_in.map(|secs| (Utc::now() + Duration::from_secs(secs)).to_rfc3339());
 
                 // 7. Upsert account in DB (no token in any field)
                 let now = Utc::now().to_rfc3339();
@@ -906,7 +915,11 @@ impl GitHubService {
                         &account.id,
                         new_expiry.as_deref(),
                     )?;
-                    GitHubAccountDao::set_status(conn, &account.id, GitHubConnectionStatus::Connected)
+                    GitHubAccountDao::set_status(
+                        conn,
+                        &account.id,
+                        GitHubConnectionStatus::Connected,
+                    )
                 })?;
                 Ok(Some(access_token))
             }
@@ -914,7 +927,11 @@ impl GitHubService {
                 // Reddedilen refresh = yeniden bağlanma şart. Durumu işaretleyip
                 // hatayı olduğu gibi üst katmana ilet.
                 let _ = db.with_conn(|conn| {
-                    GitHubAccountDao::set_status(conn, &account.id, GitHubConnectionStatus::AuthExpired)
+                    GitHubAccountDao::set_status(
+                        conn,
+                        &account.id,
+                        GitHubConnectionStatus::AuthExpired,
+                    )
                 });
                 Err(e)
             }

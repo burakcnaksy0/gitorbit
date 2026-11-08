@@ -190,6 +190,123 @@ impl GitAdapter {
         Self::run_cmd(cmd, timeout)
     }
 
+    /// GO-04c: stdout'u Boyut sınırlıyla yürütür. Devasa commit diff'leri
+    /// (`git show`) tampona alındığında bellek patlayabiliyordu — boyut kontrolü
+    /// *sonradan* çalışıyordu. Burada yalnızca `cap` baytı saklanır; kalanı pipe'ı
+    /// tıkamadan boşaltılır (ölü kilitlenme yok) ama sayılmaya devam eder.
+    /// `(Output, stdout_truncated, toplam_stdout_baytı)` döner.
+    pub fn execute_capped(
+        repo_dir: &Path,
+        args: &[&str],
+        cap: usize,
+        timeout: Duration,
+    ) -> Result<(std::process::Output, bool, usize), CommandError> {
+        let mut cmd = Command::new("git");
+        cmd.arg("-C").arg(repo_dir);
+        cmd.args(args);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            cmd.process_group(0);
+        }
+
+        let mut child = cmd
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| CommandError::io_error(format!("Git komutu yürütülemedi: {}", e)))?;
+        let child_pid = child.id();
+
+        // Kapalı okuyucu: cap'e kadar sakla, sonrası yalnızca say (drain).
+        let stdout_reader = child.stdout.take().map(|mut out| {
+            std::thread::spawn(move || {
+                let mut kept: Vec<u8> = Vec::new();
+                let mut total = 0usize;
+                let mut truncated = false;
+                let mut chunk = [0u8; 64 * 1024];
+                loop {
+                    match out.read(&mut chunk) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            total += n;
+                            if kept.len() < cap {
+                                let take = (cap - kept.len()).min(n);
+                                kept.extend_from_slice(&chunk[..take]);
+                            }
+                            if total > cap {
+                                truncated = true;
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+                (kept, truncated, total)
+            })
+        });
+        let stderr_reader = child.stderr.take().map(|mut err| {
+            std::thread::spawn(move || {
+                let mut buf = Vec::new();
+                let _ = err.read_to_end(&mut buf);
+                buf
+            })
+        });
+
+        let start = Instant::now();
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => {
+                    if start.elapsed() >= timeout {
+                        Self::kill_process_group(child_pid);
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        if let Some(h) = stdout_reader {
+                            let _ = h.join();
+                        }
+                        if let Some(h) = stderr_reader {
+                            let _ = h.join();
+                        }
+                        return Err(CommandError::new(
+                            "TIMEOUT",
+                            format!(
+                                "Git işlemi {} saniye içinde tamamlanmadı ve durduruldu.",
+                                timeout.as_secs()
+                            ),
+                            true,
+                        ));
+                    }
+                    std::thread::sleep(Duration::from_millis(25));
+                }
+                Err(e) => {
+                    return Err(CommandError::io_error(format!(
+                        "Git süreci izlenemedi: {}",
+                        e
+                    )));
+                }
+            }
+        };
+
+        let (stdout_buf, truncated, total) = match stdout_reader {
+            Some(h) => h.join().unwrap_or_else(|_| (Vec::new(), false, 0)),
+            None => (Vec::new(), false, 0),
+        };
+        let stderr_buf = match stderr_reader {
+            Some(h) => h.join().unwrap_or_default(),
+            None => Vec::new(),
+        };
+
+        Ok((
+            std::process::Output {
+                status,
+                stdout: stdout_buf,
+                stderr: stderr_buf,
+            },
+            truncated,
+            total,
+        ))
+    }
+
     fn run_cmd(
         mut cmd: Command,
         timeout: Option<Duration>,
@@ -313,7 +430,8 @@ mod tests {
         cmd.arg("-c")
             .arg("head -c 300000 /dev/zero | tr '\\0' 'x'")
             .current_dir(std::env::temp_dir());
-        let out = GitAdapter::run_cmd(cmd, Some(Duration::from_secs(10))).expect("timeout olmamalı");
+        let out =
+            GitAdapter::run_cmd(cmd, Some(Duration::from_secs(10))).expect("timeout olmamalı");
         assert!(out.status.success());
         assert_eq!(out.stdout.len(), 300000);
     }

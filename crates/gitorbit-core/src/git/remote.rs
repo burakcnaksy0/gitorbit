@@ -165,28 +165,33 @@ impl GitRemoteManager {
         Self::list_remotes(repo_dir)
     }
 
+    /// Hedef remote'un doğrulanabilir URL'i (push_url öncelikli) — auth_envs
+    /// için HTTPS karar girdisi. Bulunamazsa None (kimlik enjekte edilmez).
+    fn remote_url(repo_dir: &Path, remote: &str) -> Option<String> {
+        Self::list_remotes(repo_dir).ok().and_then(|remotes| {
+            remotes
+                .into_iter()
+                .find(|r| r.name == remote)
+                .and_then(|r| r.push_url.or(r.fetch_url))
+        })
+    }
+
     /// GO-04: fetch/pull/push için ortak kimlik ortamı kurucusu. Token
     /// SADECE hedef remote HTTPS ise enjekte edilir ve yalnızca çocuk sürecin
     /// ortamında yaşar — diske, URL'e veya config'e ASLA yazılmaz. SSH
     /// remote'larında ~/.ssh/config kimliği devrededir; injection gerekmez.
+    /// R-06: URL'yi çağırının kendisi çözer (fetch zaten listeliyordu — ikinci
+    /// `list_remotes` subprocess'i auto-fetch başına bedavaya yanıyordu).
     fn auth_envs<'a>(
         envs: &mut Vec<(&'static str, &'a str)>,
-        repo_dir: &Path,
-        remote: &str,
+        remote_url: Option<&str>,
         access_token: Option<&'a str>,
     ) {
         let Some(token) = access_token.filter(|t| !t.is_empty()) else {
             return;
         };
-        let is_https = Self::list_remotes(repo_dir)
-            .ok()
-            .and_then(|remotes| {
-                remotes
-                    .into_iter()
-                    .find(|r| r.name == remote)
-                    .and_then(|r| r.push_url.or(r.fetch_url))
-            })
-            .and_then(|u| Self::parse_remote_owner(&u).map(|(_, https)| https))
+        let is_https = remote_url
+            .and_then(|u| Self::parse_remote_owner(u).map(|(_, https)| https))
             .unwrap_or(false);
         if is_https {
             envs.push(("GITORBIT_GH_TOKEN", token));
@@ -237,7 +242,13 @@ impl GitRemoteManager {
 
         let mut envs: Vec<(&'static str, &str)> =
             vec![("GIT_TERMINAL_PROMPT", "0"), ("GIT_ASKPASS", "echo")];
-        Self::auth_envs(&mut envs, repo_dir, &target_remote, access_token);
+        // R-06: `remotes` zaten çözülmüştü — URL oradan okunur, ikinci
+        // list_remotes subprocess'i yok (auto-fetch her tur buradan geçer).
+        let target_url = remotes
+            .iter()
+            .find(|r| r.name == target_remote)
+            .and_then(|r| r.push_url.as_deref().or(r.fetch_url.as_deref()));
+        Self::auth_envs(&mut envs, target_url, access_token);
 
         let output = GitAdapter::execute_with_env_and_timeout(
             repo_dir,
@@ -360,7 +371,8 @@ impl GitRemoteManager {
         });
         let mut envs: Vec<(&'static str, &str)> =
             vec![("GIT_TERMINAL_PROMPT", "0"), ("GIT_ASKPASS", "echo")];
-        Self::auth_envs(&mut envs, repo_dir, &target_remote, access_token);
+        let target_url = Self::remote_url(repo_dir, &target_remote);
+        Self::auth_envs(&mut envs, target_url.as_deref(), access_token);
 
         let output = GitAdapter::execute_with_env_and_timeout(
             repo_dir,
@@ -509,7 +521,8 @@ impl GitRemoteManager {
         // (süreç ortamında yaşar; diske, URL'e veya config'e ASLA yazılmaz).
         let mut envs: Vec<(&'static str, &str)> =
             vec![("GIT_TERMINAL_PROMPT", "0"), ("GIT_ASKPASS", "echo")];
-        Self::auth_envs(&mut envs, repo_dir, &target_remote, access_token);
+        let target_url = Self::remote_url(repo_dir, &target_remote);
+        Self::auth_envs(&mut envs, target_url.as_deref(), access_token);
 
         let output = GitAdapter::execute_with_env_and_timeout(
             repo_dir,
