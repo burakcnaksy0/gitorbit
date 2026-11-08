@@ -228,3 +228,43 @@ fn test_init_repository_rejects_existing_repo() {
         .expect_err("mevcut depoya init yapılmamalı");
     assert_eq!(err.code, "ALREADY_A_GIT_REPOSITORY");
 }
+
+#[test]
+fn last_opened_at_throttled_on_status_reads() {
+    // GO-09c: her status okuması DB yazması üretmemeli — 10 dakikalık
+    // amortisman penceresinde ikinci okuma last_opened_at'i DEĞİŞTİRMEMELİ
+    // (auto-fetch + senkron turlarının WAL gürültüsü ve liste yeniden
+    // sıralaması buradan geliyordu).
+    let temp = tempdir().expect("tempdir");
+    let repo_path = temp.path().join("throttle-repo");
+    fs::create_dir_all(&repo_path).unwrap();
+    let run = |args: &[&str]| {
+        let o = Command::new("git")
+            .current_dir(&repo_path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(o.status.success(), "{args:?}: {}", String::from_utf8_lossy(&o.stderr));
+    };
+    run(&["init", "-b", "main"]);
+    run(&["config", "user.name", "T"]);
+    run(&["config", "user.email", "t@example.com"]);
+    fs::write(repo_path.join("f.txt"), "x\n").unwrap();
+    run(&["add", "f.txt"]);
+    run(&["commit", "-m", "init"]);
+
+    let db = Database::open(&temp.path().join("t.db")).unwrap();
+    let record = RepositoryService::add_repository(&db, repo_path.to_str().unwrap()).unwrap();
+
+    RepositoryService::get_repository_status(&db, &record.id).unwrap();
+    let first = RepositoryService::get_repository(&db, &record.id)
+        .unwrap()
+        .last_opened_at;
+    assert!(first.is_some(), "ilk status yazmalı");
+
+    RepositoryService::get_repository_status(&db, &record.id).unwrap();
+    let second = RepositoryService::get_repository(&db, &record.id)
+        .unwrap()
+        .last_opened_at;
+    assert_eq!(first, second, "10 sn içindeki ikinci okuma yazmamalı");
+}

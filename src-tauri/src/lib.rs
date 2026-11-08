@@ -507,7 +507,14 @@ async fn repository_fetch(
         }
         let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
         with_db(&state, |db| {
-            RepositoryService::fetch(db, &repo_id, remote.as_deref())
+            // GO-04: fetch de push ile aynı hesap-duyarlı token çözümünü kullanır —
+            // HTTPS özel depo where "push çalışıyor ama fetch 403 veriyor" dönemi bitti.
+            let owner_identity = origin_owner_identity(&state, db, &repo_id);
+            let token = match &owner_identity {
+                Some((account, true)) => Some(state.github.access_token(db, &account.id)?),
+                _ => None,
+            };
+            RepositoryService::fetch(db, &repo_id, remote.as_deref(), token.as_deref())
         })
     })
     .await
@@ -525,12 +532,19 @@ async fn repository_pull(
     offload(app, move |state| {
         let _lock = state.locks.try_acquire(&repo_id).map_err(AppError::from)?;
         with_db(&state, |db| {
+            // GO-04: pull da push ile simetrik token çözümünü kullanır.
+            let owner_identity = origin_owner_identity(&state, db, &repo_id);
+            let token = match &owner_identity {
+                Some((account, true)) => Some(state.github.access_token(db, &account.id)?),
+                _ => None,
+            };
             RepositoryService::pull(
                 db,
                 &repo_id,
                 remote.as_deref(),
                 branch.as_deref(),
                 strategy.as_deref(),
+                token.as_deref(),
             )
         })
     })
@@ -1308,7 +1322,14 @@ fn run_sync_round(state: &State<AppState>, kind: SyncKind) -> Vec<RepoSyncOutcom
 
         let result = match kind {
             SyncKind::Pull => with_db(state, |db| {
-                RepositoryService::pull(db, &repo_id, None, None, None)
+                // GO-04: "tümünü çek" de hesap-duyarlı token'ı kullanır —
+                // HTTPS özel depolarda kimliksiz fetch 403'ü dönemi bitti.
+                let owner_identity = origin_owner_identity(state, db, &repo_id);
+                let token = match &owner_identity {
+                    Some((account, true)) => Some(state.github.access_token(db, &account.id)?),
+                    _ => None,
+                };
+                RepositoryService::pull(db, &repo_id, None, None, None, token.as_deref())
             }),
             SyncKind::Push => with_db(state, |db| {
                 // repository_push ile aynı hesap-duyarlı kimlik/token mantığı.
@@ -1448,10 +1469,26 @@ fn open_path_in_file_manager(app: AppHandle, path: String) -> CmdResult<()> {
 pub fn run() {
     let app_state = AppState::init().expect("Uygulama veritabani baslatma hatasi");
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_notification::init());
+
+    // WP-5: tek örnek kapısı — ikinci bir GitOrbit açılırsa yeni pencere yerine
+    // mevcut pencere öne alınır. (İki örnek = iki SQLite bağlantısı + iki
+    // auto-fetch döngüsü; WAL + busy_timeout bunu tolere eder ama UX yanıltıcı.)
+    // Debug derlemelerinde bilinçli olarak DEVRE DIŞI: `tauri dev` sıcak
+    // yeniden başlatmaları çok örnekli çalışır.
+    #[cfg(all(desktop, not(debug_assertions)))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }));
+
+    builder
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             // Utility

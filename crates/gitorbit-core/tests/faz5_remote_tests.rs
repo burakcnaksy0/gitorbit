@@ -113,7 +113,7 @@ fn test_ac1_bare_remote_push_fetch_pull_sync() {
     run_cmd(&repo_b_dir, &["push", "origin", "main"]);
 
     // In repo_a, fetch
-    let fetch_status = RepositoryService::fetch(&db, &record_a.id, Some("origin")).unwrap();
+    let fetch_status = RepositoryService::fetch(&db, &record_a.id, Some("origin"), None).unwrap();
     assert_eq!(fetch_status.ahead, 0);
     assert_eq!(fetch_status.behind, 1);
 
@@ -124,6 +124,7 @@ fn test_ac1_bare_remote_push_fetch_pull_sync() {
         Some("origin"),
         Some("main"),
         Some("merge"),
+        None,
     )
     .unwrap();
 
@@ -270,6 +271,7 @@ fn test_ac3_pull_conflicts_never_destructive_reset() {
         Some("origin"),
         Some("main"),
         Some("merge"),
+        None,
     )
     .unwrap_err();
 
@@ -347,6 +349,7 @@ fn test_ac4_pull_dirty_worktree_rejected_safely() {
         Some("origin"),
         Some("main"),
         Some("merge"),
+        None,
     )
     .unwrap_err();
 
@@ -374,7 +377,7 @@ fn test_ac5_no_upstream_handling() {
     let record = RepositoryService::add_repository(&db, repo_dir.to_str().unwrap()).unwrap();
 
     // 1. Pull without upstream and without remote should return NO_UPSTREAM
-    let pull_err = RepositoryService::pull(&db, &record.id, None, None, None).unwrap_err();
+    let pull_err = RepositoryService::pull(&db, &record.id, None, None, None, None).unwrap_err();
     assert_eq!(pull_err.code, "NO_UPSTREAM");
 
     // 2. Push without upstream and without set_upstream should return NO_UPSTREAM
@@ -498,4 +501,100 @@ fn test_add_remote_success_duplicate_and_invalid_url() {
     assert!(
         GitRemoteManager::add(dir.path(), "scpos", "git@github.com:user/scpos.git").is_ok()
     );
+}
+
+// ---------------------------------------------------------------------------
+// v0.2.1 denetim regresyonları — GO-03c (branch-only pull) / GO-02c (detached)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn pull_branch_without_remote_uses_default_remote() {
+    // GO-03c: `branch` verilip `remote` verilmeyince branch sessizce yok
+    // sayılıyordu — upstream'i olmayan ama origin remote'u olan depoda pull
+    // NO_UPSTREAM diye patlıyordu. Artık varsayılan remote çözülmeli.
+    let temp_root = tempdir().unwrap();
+    let bare_dir = temp_root.path().join("bare.git");
+    let repo_a = temp_root.path().join("a");
+    let repo_b = temp_root.path().join("b");
+    for d in [&bare_dir, &repo_a] {
+        fs::create_dir_all(d).unwrap();
+    }
+    init_bare_repo(&bare_dir);
+    init_local_repo(&repo_a);
+
+    fs::write(repo_a.join("README.md"), "init\n").unwrap();
+    run_cmd(&repo_a, &["add", "README.md"]);
+    run_cmd(&repo_a, &["commit", "-m", "init"]);
+    run_cmd(&repo_a, &["remote", "add", "origin", bare_dir.to_str().unwrap()]);
+    // -u YOK: upstream tanımsız kalsın (testin özü)
+    run_cmd(&repo_a, &["push", "origin", "main"]);
+
+    // repo_b ile remote'a yeni commit (clone hedef dizini kendisi oluşturur)
+    run_cmd(temp_root.path(), &["clone", bare_dir.to_str().unwrap(), "b"]);
+    let repo_b = temp_root.path().join("b");
+    fs::write(repo_b.join("yeni.txt"), "b commit\n").unwrap();
+    run_cmd(&repo_b, &["add", "yeni.txt"]);
+    run_cmd(&repo_b, &["commit", "-m", "from b"]);
+    run_cmd(&repo_b, &["push", "origin", "main"]);
+
+    let db_dir = temp_root.path().join("db");
+    fs::create_dir_all(&db_dir).unwrap();
+    let db = Database::open(&db_dir.join("test.db")).unwrap();
+    let record = RepositoryService::add_repository(&db, repo_a.to_str().unwrap()).unwrap();
+
+    // remote=None, branch=Some("main") → eski davranışta NO_UPSTREAM
+    let status =
+        RepositoryService::pull(&db, &record.id, None, Some("main"), Some("merge"), None)
+            .expect("branch-only pull varsayılan remote ile çalışmalı");
+    assert_eq!(status.behind, 0);
+    assert!(repo_a.join("yeni.txt").exists());
+}
+
+#[test]
+fn detached_head_push_and_pull_rejected_honestly() {
+    // GO-02c: branch alanı detached'da Some("HEAD (sha)") olduğundan push'un
+    // eski koruması ölü koddu; git'e "HEAD (abc1234)" dalı gönderilmeye
+    // çalışılıyordu. Artık her ikisi de INVALID_STATE ile dürüstçe döner.
+    let temp_root = tempdir().unwrap();
+    let bare_dir = temp_root.path().join("bare.git");
+    let repo = temp_root.path().join("repo");
+    fs::create_dir_all(&bare_dir).unwrap();
+    fs::create_dir_all(&repo).unwrap();
+    init_bare_repo(&bare_dir);
+    init_local_repo(&repo);
+
+    fs::write(repo.join("a.txt"), "1\n").unwrap();
+    run_cmd(&repo, &["add", "a.txt"]);
+    run_cmd(&repo, &["commit", "-m", "c1"]);
+    fs::write(repo.join("a.txt"), "2\n").unwrap();
+    run_cmd(&repo, &["commit", "-am", "c2"]);
+    run_cmd(&repo, &["remote", "add", "origin", bare_dir.to_str().unwrap()]);
+    run_cmd(&repo, &["push", "-u", "origin", "main"]);
+
+    let sha1 = String::from_utf8_lossy(
+        &Command::new("git")
+            .current_dir(&repo)
+            .args(["rev-parse", "HEAD~1"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .trim()
+    .to_string();
+    run_cmd(&repo, &["checkout", &sha1]); // detached HEAD
+
+    let db_dir = temp_root.path().join("db");
+    fs::create_dir_all(&db_dir).unwrap();
+    let db = Database::open(&db_dir.join("test.db")).unwrap();
+    let record = RepositoryService::add_repository(&db, repo.to_str().unwrap()).unwrap();
+
+    let push_err =
+        RepositoryService::push(&db, &record.id, None, None, false, false, None).unwrap_err();
+    assert_eq!(push_err.code, "INVALID_STATE");
+    assert!(push_err.message.contains("Detached"));
+
+    let pull_err =
+        RepositoryService::pull(&db, &record.id, None, None, None, None).unwrap_err();
+    assert_eq!(pull_err.code, "INVALID_STATE");
+    assert!(pull_err.message.contains("Detached"));
 }

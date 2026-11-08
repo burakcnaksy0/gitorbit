@@ -34,6 +34,10 @@ impl Database {
         // üstü kırpılır). Best-effort: başarısızlık açmayı engellemez.
         let _ = conn.pragma_update(None, "journal_size_limit", 4 * 1024 * 1024);
 
+        // WP-5: ikinci bir uygulama örneği / sarkmış write ile anlık SQLITE_BUSY
+        // yerine 5 sn bekleyip dene (WAL'da okuyucular zaten bloklanmaz).
+        let _ = conn.pragma_update(None, "busy_timeout", 5000);
+
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             db_path: Some(path.to_path_buf()),

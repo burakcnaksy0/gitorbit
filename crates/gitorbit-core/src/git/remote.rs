@@ -165,9 +165,48 @@ impl GitRemoteManager {
         Self::list_remotes(repo_dir)
     }
 
+    /// GO-04: fetch/pull/push için ortak kimlik ortamı kurucusu. Token
+    /// SADECE hedef remote HTTPS ise enjekte edilir ve yalnızca çocuk sürecin
+    /// ortamında yaşar — diske, URL'e veya config'e ASLA yazılmaz. SSH
+    /// remote'larında ~/.ssh/config kimliği devrededir; injection gerekmez.
+    fn auth_envs<'a>(
+        envs: &mut Vec<(&'static str, &'a str)>,
+        repo_dir: &Path,
+        remote: &str,
+        access_token: Option<&'a str>,
+    ) {
+        let Some(token) = access_token.filter(|t| !t.is_empty()) else {
+            return;
+        };
+        let is_https = Self::list_remotes(repo_dir)
+            .ok()
+            .and_then(|remotes| {
+                remotes
+                    .into_iter()
+                    .find(|r| r.name == remote)
+                    .and_then(|r| r.push_url.or(r.fetch_url))
+            })
+            .and_then(|u| Self::parse_remote_owner(&u).map(|(_, https)| https))
+            .unwrap_or(false);
+        if is_https {
+            envs.push(("GITORBIT_GH_TOKEN", token));
+            envs.push(("GIT_CONFIG_COUNT", "2"));
+            envs.push(("GIT_CONFIG_KEY_0", "credential.helper"));
+            envs.push(("GIT_CONFIG_VALUE_0", "")); // stored helpers sıfırla
+            envs.push(("GIT_CONFIG_KEY_1", "credential.helper"));
+            envs.push(("GIT_CONFIG_VALUE_1", PUSH_TOKEN_HELPER));
+        }
+    }
+
     /// Fetches changes from a remote without modifying working tree files.
     /// Updates remote-tracking references and refreshes upstream ahead/behind counts.
-    pub fn fetch(repo_dir: &Path, remote: Option<&str>) -> Result<GitStatus, CommandError> {
+    /// GO-04: `access_token` yalnızca HTTPS remote'larda geçici credential
+    /// helper olarak kullanılır (push ile aynı simetri) — diske yazılmaz.
+    pub fn fetch(
+        repo_dir: &Path,
+        remote: Option<&str>,
+        access_token: Option<&str>,
+    ) -> Result<GitStatus, CommandError> {
         let mut args = vec!["fetch", "--prune"];
 
         let remotes = Self::list_remotes(repo_dir)?;
@@ -196,10 +235,14 @@ impl GitRemoteManager {
 
         args.push(&target_remote);
 
+        let mut envs: Vec<(&'static str, &str)> =
+            vec![("GIT_TERMINAL_PROMPT", "0"), ("GIT_ASKPASS", "echo")];
+        Self::auth_envs(&mut envs, repo_dir, &target_remote, access_token);
+
         let output = GitAdapter::execute_with_env_and_timeout(
             repo_dir,
             &args,
-            &[("GIT_TERMINAL_PROMPT", "0"), ("GIT_ASKPASS", "echo")],
+            &envs,
             Some(Duration::from_secs(30)),
         )?;
 
@@ -221,10 +264,21 @@ impl GitRemoteManager {
         remote: Option<&str>,
         branch: Option<&str>,
         strategy: Option<&str>,
+        access_token: Option<&str>,
     ) -> Result<GitStatus, CommandError> {
         let status_before = GitStatusParser::get_status(repo_dir)?;
 
-        if status_before.upstream.is_none() && remote.is_none() {
+        // GO-02c: detached HEAD'da pull anlamsızdır — git hangi dala merge
+        // edeceğini bilemez ve kafa karıştırıcı hata verir. Dürüst gerekçe.
+        if status_before.is_detached_head {
+            return Err(CommandError::new(
+                "INVALID_STATE",
+                "Detached HEAD durumunda pull yapılamaz. Lütfen önce bir dal oluşturun veya seçin.",
+                true,
+            ));
+        }
+
+        if status_before.upstream.is_none() && remote.is_none() && branch.is_none() {
             return Err(CommandError::new(
                 "NO_UPSTREAM",
                 "Aktif dal için upstream bilgisi bulunamadı. Lütfen önce upstream dalını belirleyin veya remote/branch belirtin.",
@@ -243,24 +297,75 @@ impl GitRemoteManager {
             args.push("--no-rebase");
         }
 
-        let remote_str;
-        let branch_str;
-        if let Some(r) = remote {
-            Self::validate_name(r, "Remote adı")?;
-            remote_str = r.to_string();
-            args.push(&remote_str);
-
-            if let Some(b) = branch {
-                Self::validate_name(b, "Branch adı")?;
-                branch_str = b.to_string();
-                args.push(&branch_str);
+        // GO-03c: `branch` verilip `remote` verilmeyince branch sessizce
+        // yok sayılıyordu (git pull <branch> remote ADI olarak yorumlanır!).
+        // Varsayılan remote'u çöz: upstream öneki → origin → ilk remote.
+        let mut remote_owned: Option<String> = None;
+        let mut branch_owned: Option<String> = None;
+        match (remote, branch) {
+            (Some(r), b) => {
+                Self::validate_name(r, "Remote adı")?;
+                remote_owned = Some(r.to_string());
+                if let Some(b) = b {
+                    Self::validate_name(b, "Branch adı")?;
+                    branch_owned = Some(b.to_string());
+                }
             }
+            (None, Some(b)) => {
+                Self::validate_name(b, "Branch adı")?;
+                let default_remote = status_before
+                    .upstream
+                    .as_deref()
+                    .and_then(|u| u.split_once('/'))
+                    .map(|(r, _)| r.to_string())
+                    .or_else(|| {
+                        let remotes = Self::list_remotes(repo_dir).ok()?;
+                        if remotes.iter().any(|r| r.name == "origin") {
+                            Some("origin".to_string())
+                        } else {
+                            remotes.first().map(|r| r.name.clone())
+                        }
+                    });
+                match default_remote {
+                    Some(r) => {
+                        remote_owned = Some(r);
+                        branch_owned = Some(b.to_string());
+                    }
+                    None => {
+                        return Err(CommandError::new(
+                            "NO_REMOTES",
+                            "Branch belirtildi ancak kullanılacak remote çözülemedi (upstream yok ve depoda remote tanımlı değil).",
+                            true,
+                        ));
+                    }
+                }
+            }
+            (None, None) => {}
         }
+        if let Some(r) = &remote_owned {
+            args.push(r);
+        }
+        if let Some(b) = &branch_owned {
+            args.push(b);
+        }
+
+        // GO-04: token enjeksiyonu push ile simetrik — hedef remote HTTPS ise.
+        let target_remote = remote_owned.clone().unwrap_or_else(|| {
+            status_before
+                .upstream
+                .as_deref()
+                .and_then(|u| u.split_once('/'))
+                .map(|(r, _)| r.to_string())
+                .unwrap_or_else(|| "origin".to_string())
+        });
+        let mut envs: Vec<(&'static str, &str)> =
+            vec![("GIT_TERMINAL_PROMPT", "0"), ("GIT_ASKPASS", "echo")];
+        Self::auth_envs(&mut envs, repo_dir, &target_remote, access_token);
 
         let output = GitAdapter::execute_with_env_and_timeout(
             repo_dir,
             &args,
-            &[("GIT_TERMINAL_PROMPT", "0"), ("GIT_ASKPASS", "echo")],
+            &envs,
             Some(Duration::from_secs(45)),
         )?;
 
@@ -336,10 +441,22 @@ impl GitRemoteManager {
     ) -> Result<GitStatus, CommandError> {
         let status_before = GitStatusParser::get_status(repo_dir)?;
 
+        // GO-02c: branch alanı detached HEAD'da bile Some("HEAD (sha)") olur —
+        // eski `.ok_or_else` koruması hiç tetiklenmiyordu (ölü kod) ve push
+        // "HEAD (abc1234)" adında olmayan bir dalı göndermeye çalışıyordu.
+        // Gerçek kapı is_detached_head olmalı.
+        if status_before.is_detached_head {
+            return Err(CommandError::new(
+                "INVALID_STATE",
+                "Detached HEAD durumunda doğrudan push yapılamaz. Lütfen önce bir dal oluşturun veya seçin.",
+                true,
+            ));
+        }
+
         let current_branch = status_before.branch.clone().ok_or_else(|| {
             CommandError::new(
                 "INVALID_STATE",
-                "Detached HEAD durumunda doğrudan push yapılamaz. Lütfen önce bir dal oluşturun veya seçin.",
+                "Aktif dal adı belirlenemedi; push iptal edildi.",
                 true,
             )
         })?;
@@ -388,32 +505,11 @@ impl GitRemoteManager {
         };
         args.push(&target_branch);
 
-        // Hesap token'i: yalnızca HTTPS remote'lar için geçici credential helper
-        // olarak enjekte edilir (süreç ortamında yaşar; diske, URL'e veya
-        // config'e ASLA yazılmaz). SSH remote'larında injection gerekmez —
-        // ~/.ssh/config kimliği kullanılır.
-        let mut envs: Vec<(&str, &str)> =
+        // GO-04: hesap token'i geçici credential helper olarak enjekte edilir
+        // (süreç ortamında yaşar; diske, URL'e veya config'e ASLA yazılmaz).
+        let mut envs: Vec<(&'static str, &str)> =
             vec![("GIT_TERMINAL_PROMPT", "0"), ("GIT_ASKPASS", "echo")];
-        if let Some(token) = access_token.filter(|t| !t.is_empty()) {
-            let is_https = Self::list_remotes(repo_dir)
-                .ok()
-                .and_then(|remotes| {
-                    remotes
-                        .into_iter()
-                        .find(|r| r.name == target_remote)
-                        .and_then(|r| r.push_url.or(r.fetch_url))
-                })
-                .and_then(|u| Self::parse_remote_owner(&u).map(|(_, https)| https))
-                .unwrap_or(false);
-            if is_https {
-                envs.push(("GITORBIT_GH_TOKEN", token));
-                envs.push(("GIT_CONFIG_COUNT", "2"));
-                envs.push(("GIT_CONFIG_KEY_0", "credential.helper"));
-                envs.push(("GIT_CONFIG_VALUE_0", "")); // stored helpers sıfırla
-                envs.push(("GIT_CONFIG_KEY_1", "credential.helper"));
-                envs.push(("GIT_CONFIG_VALUE_1", PUSH_TOKEN_HELPER));
-            }
-        }
+        Self::auth_envs(&mut envs, repo_dir, &target_remote, access_token);
 
         let output = GitAdapter::execute_with_env_and_timeout(
             repo_dir,

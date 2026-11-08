@@ -167,9 +167,21 @@ impl RepositoryService {
 
         let status = GitStatusParser::get_status(path)?;
 
-        // Update last_opened_at timestamp in database
-        let now = Utc::now().to_rfc3339();
-        let _ = db.with_conn(|conn| RepositoryDao::update_last_opened(conn, id, &now));
+        // GO-09c: last_opened_at her status okumasında YAZILIYORDU — auto-fetch
+        // + senkron turlarıyla birleşince boş WAL/IO gürültüsü ve listelerin
+        // kullanıcı altında sürekli yeniden sıralanması oluşuyordu. 10 dakikadan
+        // tazaysa yazma atlanır (sıra hissi korunur, yazma amortismanı düşer).
+        const REFRESH_MINUTES: i64 = 10;
+        let stale = repo
+            .last_opened_at
+            .as_deref()
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|t| (Utc::now() - t.with_timezone(&Utc)).num_minutes() >= REFRESH_MINUTES)
+            .unwrap_or(true);
+        if stale {
+            let now = Utc::now().to_rfc3339();
+            let _ = db.with_conn(|conn| RepositoryDao::update_last_opened(conn, id, &now));
+        }
 
         Ok(status)
     }
@@ -553,14 +565,17 @@ impl RepositoryService {
     // -----------------------------------------------------------------
 
     /// Fetches changes from a remote without altering working tree files.
+    /// GO-04: `access_token` bağlı hesaptan çözülür ve yalnızca HTTPS
+    /// remote'larda geçici credential helper olarak kullanılır.
     pub fn fetch(
         db: &Database,
         repo_id: &str,
         remote: Option<&str>,
+        access_token: Option<&str>,
     ) -> Result<GitStatus, CommandError> {
         let repo = Self::get_repository(db, repo_id)?;
         let path = Path::new(&repo.canonical_path);
-        let status = GitRemoteManager::fetch(path, remote)?;
+        let status = GitRemoteManager::fetch(path, remote, access_token)?;
         if let Some(ref branch) = status.branch {
             let _ = db.with_conn(|conn| {
                 RepositoryDao::update_current_branch(conn, repo_id, Some(branch.as_str()))
@@ -570,16 +585,18 @@ impl RepositoryService {
     }
 
     /// Pulls changes from upstream or specified remote/branch into the current branch.
+    /// GO-04: `access_token` yalnızca HTTPS remote'larda geçici helper'dır.
     pub fn pull(
         db: &Database,
         repo_id: &str,
         remote: Option<&str>,
         branch: Option<&str>,
         strategy: Option<&str>,
+        access_token: Option<&str>,
     ) -> Result<GitStatus, CommandError> {
         let repo = Self::get_repository(db, repo_id)?;
         let path = Path::new(&repo.canonical_path);
-        let status = GitRemoteManager::pull(path, remote, branch, strategy)?;
+        let status = GitRemoteManager::pull(path, remote, branch, strategy, access_token)?;
         if let Some(ref b) = status.branch {
             let _ = db.with_conn(|conn| {
                 RepositoryDao::update_current_branch(conn, repo_id, Some(b.as_str()))
