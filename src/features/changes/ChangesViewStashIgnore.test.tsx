@@ -151,4 +151,27 @@ describe("ChangesView stash akışı (v0.2)", () => {
       expect(tauriCommands.repositoryStashDrop).toHaveBeenCalledWith("repo-1", "0")
     );
   });
+
+  it("stash drop çift tıklama TEK istek tetikler (CB-01 regresyon)", async () => {
+    vi.mocked(tauriCommands.repositoryStashList).mockResolvedValue([sampleStash]);
+    let resolveDrop!: (v: never[]) => void;
+    const dropPromise = new Promise<never[]>((resolve) => {
+      resolveDrop = resolve;
+    });
+    vi.mocked(tauriCommands.repositoryStashDrop).mockReturnValue(dropPromise);
+
+    render(<ChangesView repoId="repo-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: /Stash listesini göster/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "stash 0 sil" }));
+
+    const confirm = await screen.findByRole("button", { name: "Kalıcı Olarak Sil" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm); // istek sürerken ikinci tıklama
+
+    await waitFor(() => expect(confirm).toBeDisabled());
+    expect(tauriCommands.repositoryStashDrop).toHaveBeenCalledTimes(1);
+
+    resolveDrop([]);
+    await waitFor(() => expect(confirm).not.toBeInTheDocument());
+  });
 });

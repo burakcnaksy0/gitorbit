@@ -32,7 +32,7 @@ interface RepositoryListViewProps {
   onAddRepository: () => void;
   onCloneRepository: (url: string, destination: string) => void;
   onRemoveRepository: (repoId: string) => void;
-  onRelinkRepository: (repoId: string, newPath: string) => void;
+  onRelinkRepository: (repoId: string, newPath: string) => Promise<void>;
   onOpenInFileManager: (path: string) => void;
   /** Shown for repos without an `origin`: publish to GitHub. */
   onPublishRequest?: (repo: RepositorySummary) => void;
@@ -88,7 +88,9 @@ export const RepositoryListView: React.FC<RepositoryListViewProps> = ({
       if (!selected) return;
       setBusyRepoId(repo.id);
       try {
-        onRelinkRepository(repo.id, selected);
+        // CB-13: await edilmezse spinner IPC bitmeden kalkar ve buton
+        // işlem sürerken yeniden tıklanabilir hale gelirdi.
+        await onRelinkRepository(repo.id, selected);
       } finally {
         setBusyRepoId(null);
       }

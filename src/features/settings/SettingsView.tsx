@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle,
@@ -49,6 +49,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(true);
   const [accountsError, setAccountsError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  // CB-02: cihaz-akışı poll döngüsü bu bileşen ayrılırken (sekme değişimi)
+  // durdurulmalı — aksi halde 15 dk boyunca terk edilmiş işlemin IPC'sine ve
+  // hayalet setState/hatalarına devam eder.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -75,9 +85,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setAccountsError(null);
     try {
       const session = await githubBeginLogin();
+      if (!mountedRef.current) return;
       // Show the user code in a modal-free way: the GitHub view owns the full
       // device-flow dialog. Here we only open the browser and start polling.
-      window.open(session.verification_uri, "_blank", "noopener,noreferrer");
+      // wry/Tauri'de window.open ölü uç olabiliyor — opener plugini tercih et.
+      try {
+        const { openUrl } = await import("@tauri-apps/plugin-opener");
+        await openUrl(session.verification_uri);
+      } catch {
+        window.open(session.verification_uri, "_blank", "noopener,noreferrer");
+      }
 
       const startedAt = Date.now();
       const deadline = startedAt + session.expires_in * 1000;
@@ -85,6 +102,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       while (Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        // Bileşen ayrıldıysa döngüyü terk et: terk edilmiş cihaz akışının
+        // IPC trafiği ve hayalet hata bildirimi üretilmez (CB-02).
+        if (!mountedRef.current) return;
         try {
           const result = await githubPollLogin(session.session_token);
           if (result.status === "success") {
@@ -104,11 +124,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         message: "Cihaz kodu süresi doldu. Lütfen tekrar deneyin.",
       };
     } catch (err) {
+      if (!mountedRef.current) return;
       const e = err as { message?: string };
       if (onError) onError("GitHub Hesabı Bağla", err);
       else setAccountsError(e.message ?? "GitHub bağlantısı kurulamadı.");
     } finally {
-      setConnecting(false);
+      if (mountedRef.current) setConnecting(false);
     }
   }, [loadAccounts, onError]);
 

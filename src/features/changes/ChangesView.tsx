@@ -933,7 +933,9 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
   );
 
   const handleStashDrop = useCallback(async () => {
-    if (!repoId || !stashDropTarget) return;
+    // Çift-tık koruması: ilk drop indeksi kaydırdığı için ikinci çağrı
+    // BAŞKA stash'i silerdi — meşgulken yeni drop başlatılamaz.
+    if (!repoId || !stashDropTarget || stashBusyId !== null) return;
     setStashBusyId(stashDropTarget.index);
     try {
       setStashes(await repositoryStashDrop(repoId, stashDropTarget.index));
@@ -945,7 +947,7 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
     } finally {
       setStashBusyId(null);
     }
-  }, [notify, repoId, stashDropTarget]);
+  }, [notify, repoId, stashDropTarget, stashBusyId]);
 
   // -------------------------------------------------------------------------
   // v0.2 — Çakışma paneli (madde 7): taraf seç, aç, işaretle, devam/iptal
@@ -1828,7 +1830,8 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
               <button
                 type="button"
                 onClick={() => void handleStashDrop()}
-                className="flex-1 py-1.5 rounded text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition-colors"
+                disabled={stashBusyId !== null}
+                className="flex-1 py-1.5 rounded text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Kalıcı Olarak Sil
               </button>

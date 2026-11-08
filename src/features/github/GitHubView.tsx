@@ -689,6 +689,8 @@ export const GitHubView: React.FC = () => {
   // Start polling after user clicks confirm
   const handleStartPolling = useCallback(() => {
     if (view.kind !== "login-start") return;
+    // Yarıda kesilmiş bir tur varsa sızıntı olmasın (R-04).
+    stopPolling();
 
     const session = view.session;
     setView({ kind: "login-polling", session });

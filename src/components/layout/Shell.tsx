@@ -767,7 +767,7 @@ export const Shell: React.FC = () => {
             }
             onRemoveRepository={(repoId) => void handleRemoveRepository(repoId)}
             onRelinkRepository={(repoId, path) =>
-              void handleRelinkRepository(repoId, path)
+              handleRelinkRepository(repoId, path)
             }
             onOpenInFileManager={(path) => {
               openPathInFileManager(path).catch((err: unknown) =>

@@ -20,6 +20,14 @@ beforeEach(() => {
   vi.mocked(tauriCommands.appGetEnvironment).mockResolvedValue(mockEnvironment);
   vi.mocked(tauriCommands.appGetInfo).mockResolvedValue(mockAppInfo);
   vi.mocked(tauriCommands.repositoryGetStatus).mockResolvedValue(mockStatus);
+  // Shell.loadRepositories her depo için geçmiş de çeker; eksik mock liste
+  // akışını patlatır (yakalanan TypeError → depolar boşalır → rehber kalır).
+  vi.mocked(tauriCommands.repositoryGetHistory).mockResolvedValue({
+    commits: [],
+    graph: [],
+    has_more: false,
+    next_offset: 0,
+  });
   vi.mocked(tauriCommands.githubListAccounts).mockResolvedValue([]);
   vi.mocked(tauriCommands.settingsUpdate).mockImplementation(async (update) => ({
     ...mockSettings,
@@ -54,8 +62,13 @@ describe("Onboarding görünürlüğü (v0.2 madde 12)", () => {
   it("en az bir depo varsa ayar kapalı olsa bile rehber GÖRÜNMEZ", async () => {
     withSettings(false, 1);
     render(<App />);
+    // Depolar asenkron yüklendiği için rehber bir an görünüp kaybolabilir;
+    // anlam taşınan şey SON durumdur: depo varken rehber kaybolmalı (yarış
+    // koşusunu önlemek için anlık değil, kararlı durum doğrulanır).
     await screen.findByRole("navigation");
-    expect(screen.queryByText(/Kurulumu tamamla/)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText(/Kurulumu tamamla/)).not.toBeInTheDocument()
+    );
   });
 
   it("'Şimdilik atla' ayarı kalıcı true yazar", async () => {

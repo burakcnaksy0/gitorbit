@@ -30,7 +30,7 @@ export const repositoryGetDiff = vi.fn();
 export const repositoryGetStatusHash = vi.fn();
 export const repositoryDiscardChanges = vi.fn();
 
-export const repositoryGetBranches = vi.fn();
+export const repositoryGetBranches = vi.fn().mockResolvedValue([]);
 export const repositoryCreateBranch = vi.fn();
 export const repositoryCheckoutBranch = vi.fn();
 export const repositoryDeleteBranch = vi.fn();
