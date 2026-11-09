@@ -16,7 +16,13 @@ vi.mock("../../lib/tauriCommands", () => ({
 const outcomes: RepoSyncOutcome[] = [
   { repo_id: "r1", name: "alpha", status: "done", detail: null, summary: "güncel" },
   { repo_id: "r2", name: "beta", status: "skipped", detail: "origin yok", summary: null },
-  { repo_id: "r3", name: "gamma", status: "error", detail: "merge hatası", summary: null },
+  {
+    repo_id: "r3",
+    name: "gamma",
+    status: "error",
+    detail: "merge hatası",
+    summary: null,
+  },
 ];
 
 beforeEach(() => {
@@ -40,7 +46,9 @@ describe("SyncAllModal", () => {
     expect(screen.getByRole("dialog", { name: "Tümünü İçe Aktar" })).toBeInTheDocument();
     expect(screen.getByText("Durdur")).toBeInTheDocument();
 
-    expect(await screen.findByText("Özet: 1 başarılı, 1 atlandı, 1 hatalı")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Özet: 1 başarılı, 1 atlandı, 1 hatalı")
+    ).toBeInTheDocument();
     expect(screen.getByText("alpha")).toBeInTheDocument();
     expect(screen.getByText("origin yok")).toBeInTheDocument();
     expect(screen.getByText("merge hatası")).toBeInTheDocument();
@@ -80,9 +88,7 @@ describe("SyncAllModal", () => {
     const onFinished = vi.fn();
 
     render(<SyncAllModal kind="pull" onClose={() => {}} onFinished={onFinished} />);
-    expect(
-      await screen.findByText("Senkron turu başlatılamadı.")
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Senkron turu başlatılamadı.")).toBeInTheDocument();
     expect(onFinished).toHaveBeenCalledWith([]);
   });
 });

@@ -20,8 +20,11 @@ export function useDialogA11y<T extends HTMLElement = HTMLDivElement>(
 ) {
   const ref = useRef<T>(null);
   // onClose her render'da tazelenir — effect'i yeniden kurmadan güncel kalır.
+  // (Yazma effect içinde: render sırasında ref'e yazmak saf değildir.)
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  useEffect(() => {
+    closeRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;

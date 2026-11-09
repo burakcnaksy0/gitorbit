@@ -6,7 +6,10 @@ import { describe, it, expect, vi } from "vitest";
 import { RepositoryListView } from "./RepositoryListView";
 import type { RepositorySummary } from "../../types/navigation";
 
-function repo(name: string, overrides: Partial<RepositorySummary> = {}): RepositorySummary {
+function repo(
+  name: string,
+  overrides: Partial<RepositorySummary> = {}
+): RepositorySummary {
   return {
     id: `id-${name}`,
     name,
@@ -63,9 +66,7 @@ describe("RepositoryListView sabitleme (v0.2 madde 10)", () => {
 
   it("pin butonu onTogglePin'i ilgili depoyla çağırır", () => {
     const props = renderList();
-    fireEvent.click(
-      screen.getByRole("button", { name: "alpha deposunu sabitle" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "alpha deposunu sabitle" }));
     expect(props.onTogglePin).toHaveBeenCalledWith(
       expect.objectContaining({ name: "alpha" })
     );
@@ -81,8 +82,6 @@ describe("RepositoryListView sabitleme (v0.2 madde 10)", () => {
 
   it("onTogglePin verilmemişse pin butonu render edilmez (geriye dönük uyum)", () => {
     renderList({ onTogglePin: undefined });
-    expect(
-      screen.queryByRole("button", { name: /sabitle/ })
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /sabitle/ })).not.toBeInTheDocument();
   });
 });

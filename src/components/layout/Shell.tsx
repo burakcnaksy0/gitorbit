@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { TopBar } from "./TopBar";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
@@ -83,6 +83,13 @@ const CLOSED_NOTICE: NoticeState = {
   tone: "info",
 };
 
+// CB-03 bayat-tur sayacı: modül düzeyinde monoton sayaç. (Ref yerine:
+// loadRepositories'i yakalayan palet kapanları render-fazında "ref okuyan
+// fonksiyon" uyarısı veriyordu — React Compiler'ın refs kuralı. Monoton
+// sayaç tek örnek uygulama için birebir aynı garantidir; testlerdeki tekrar
+// tekrar mount durumunda da doğru çalışır, çünkü her yeni tur büyük seq alır.)
+let loadSeqCounter = 0;
+
 // ---------------------------------------------------------------------------
 // Shell
 // ---------------------------------------------------------------------------
@@ -159,13 +166,11 @@ export const Shell: React.FC = () => {
   // Loading
   // -------------------------------------------------------------------------
 
-  const loadSeq = useRef(0);
-
   const loadRepositories = useCallback(async () => {
-    const seq = ++loadSeq.current;
+    const seq = ++loadSeqCounter;
     try {
       const records = await repositoryList();
-      if (loadSeq.current !== seq) return; // CB-03: bayat tur
+      if (loadSeqCounter !== seq) return; // CB-03: bayat tur
       setReposError(null);
       if (!Array.isArray(records)) {
         throw {
@@ -196,7 +201,7 @@ export const Shell: React.FC = () => {
       );
       // Tarama bitti ama bu arada daha yeni bir tur başladıysa bu turun
       // toplu sonuçları uygulamaz (CB-03).
-      if (loadSeq.current !== seq) return;
+      if (loadSeqCounter !== seq) return;
       // Toplu DEĞİŞTİRME değil birleştirme: bu sırada yazan auto-fetch/
       // mutasyon güncellemeleri silinmesin.
       setStatuses((prev) => ({ ...prev, ...statusEntries }));
@@ -206,14 +211,14 @@ export const Shell: React.FC = () => {
         return records[0]?.id ?? null;
       });
     } catch (err) {
-      if (loadSeq.current !== seq) return;
+      if (loadSeqCounter !== seq) return;
       setReposError(errorMessage(err));
       setRepositories([]);
       setStatuses({});
       setLastCommits({});
       setCurrentRepoId(null);
     } finally {
-      if (loadSeq.current === seq) setIsLoadingRepos(false);
+      if (loadSeqCounter === seq) setIsLoadingRepos(false);
     }
   }, []);
 
@@ -600,18 +605,53 @@ export const Shell: React.FC = () => {
         showError("Dala Geç", err);
       }
     },
-    [currentRepo?.id, loadRepositories, notify, showError]
+    [currentRepo, loadRepositories, notify, showError]
   );
 
   const paletteItems = useMemo<PaletteItem[]>(() => {
     const items: PaletteItem[] = [
-      { id: "tab.welcome", section: "Sekmeler", label: "Genel Bakış", run: () => setActiveTab("welcome") },
-      { id: "tab.repositories", section: "Sekmeler", label: "Depolar", run: () => setActiveTab("repositories") },
-      { id: "tab.changes", section: "Sekmeler", label: "Değişiklikler", run: () => setActiveTab("changes") },
-      { id: "tab.history", section: "Sekmeler", label: "Geçmiş", run: () => setActiveTab("history") },
-      { id: "tab.branches", section: "Sekmeler", label: "Dallar", run: () => setActiveTab("branches") },
-      { id: "tab.github", section: "Sekmeler", label: "GitHub", run: () => setActiveTab("github") },
-      { id: "tab.settings", section: "Sekmeler", label: "Ayarlar", run: () => setActiveTab("settings") },
+      {
+        id: "tab.welcome",
+        section: "Sekmeler",
+        label: "Genel Bakış",
+        run: () => setActiveTab("welcome"),
+      },
+      {
+        id: "tab.repositories",
+        section: "Sekmeler",
+        label: "Depolar",
+        run: () => setActiveTab("repositories"),
+      },
+      {
+        id: "tab.changes",
+        section: "Sekmeler",
+        label: "Değişiklikler",
+        run: () => setActiveTab("changes"),
+      },
+      {
+        id: "tab.history",
+        section: "Sekmeler",
+        label: "Geçmiş",
+        run: () => setActiveTab("history"),
+      },
+      {
+        id: "tab.branches",
+        section: "Sekmeler",
+        label: "Dallar",
+        run: () => setActiveTab("branches"),
+      },
+      {
+        id: "tab.github",
+        section: "Sekmeler",
+        label: "GitHub",
+        run: () => setActiveTab("github"),
+      },
+      {
+        id: "tab.settings",
+        section: "Sekmeler",
+        label: "Ayarlar",
+        run: () => setActiveTab("settings"),
+      },
     ];
 
     for (const repo of summaries) {
@@ -639,11 +679,41 @@ export const Shell: React.FC = () => {
     }
 
     items.push(
-      { id: "action.add-repo", section: "İşlemler", label: "Depo Ekle", hint: "Klasörden kaydet", run: () => void handleAddRepository() },
-      { id: "action.clone", section: "İşlemler", label: "GitHub'dan Klonla", hint: "Depolar sekmesi", run: () => setActiveTab("repositories") },
-      { id: "action.sync", section: "İşlemler", label: "Senkronize Et (Fetch)", hint: currentRepo?.name, run: () => void handleSync() },
-      { id: "action.pull", section: "İşlemler", label: "İçe Aktar (Pull)", hint: currentRepo?.name, run: () => void handlePull() },
-      { id: "action.push", section: "İşlemler", label: "Dışa Aktar (Push)", hint: currentRepo?.name, run: () => void handlePush() }
+      {
+        id: "action.add-repo",
+        section: "İşlemler",
+        label: "Depo Ekle",
+        hint: "Klasörden kaydet",
+        run: () => void handleAddRepository(),
+      },
+      {
+        id: "action.clone",
+        section: "İşlemler",
+        label: "GitHub'dan Klonla",
+        hint: "Depolar sekmesi",
+        run: () => setActiveTab("repositories"),
+      },
+      {
+        id: "action.sync",
+        section: "İşlemler",
+        label: "Senkronize Et (Fetch)",
+        hint: currentRepo?.name,
+        run: () => void handleSync(),
+      },
+      {
+        id: "action.pull",
+        section: "İşlemler",
+        label: "İçe Aktar (Pull)",
+        hint: currentRepo?.name,
+        run: () => void handlePull(),
+      },
+      {
+        id: "action.push",
+        section: "İşlemler",
+        label: "Dışa Aktar (Push)",
+        hint: currentRepo?.name,
+        run: () => void handlePush(),
+      }
     );
 
     if (currentRepo && !currentRepo.upstream) {
@@ -677,10 +747,7 @@ export const Shell: React.FC = () => {
       (paths: string[]) => {
         if (paths.length === 0) return;
         if (paths.length > 1) {
-          notify.info(
-            "Birden fazla öğe bırakıldı",
-            `İlk klasör ekleniyor: ${paths[0]}`
-          );
+          notify.info("Birden fazla öğe bırakıldı", `İlk klasör ekleniyor: ${paths[0]}`);
         }
         void openRepository(paths[0]);
       },
@@ -711,28 +778,32 @@ export const Shell: React.FC = () => {
                   hasRepositories={repositories.length > 0}
                   onConnectGitHub={() => setActiveTab("github")}
                   onAddRepository={() => void handleAddRepository()}
-                  onStartFirstTask={() => setActiveTab(currentRepoId ? "changes" : "repositories")}
+                  onStartFirstTask={() =>
+                    setActiveTab(currentRepoId ? "changes" : "repositories")
+                  }
                   onDismiss={() =>
-                    void handleSaveSettings({ onboarding_completed: true }).catch(() => {})
+                    void handleSaveSettings({ onboarding_completed: true }).catch(
+                      () => {}
+                    )
                   }
                 />
               </div>
             )}
             <WelcomeView
-            repositories={summaries}
-            isLoading={isLoadingRepos}
-            error={reposError}
-            onRetry={() => {
-              setIsLoadingRepos(true);
-              void loadRepositories();
-            }}
-            onSelectRepo={(repo) => {
-              setCurrentRepoId(repo.id);
-              setActiveTab("changes");
-            }}
-            onNavigate={setActiveTab}
-            onAddRepository={() => void handleAddRepository()}
-            onCloneRequest={() => setActiveTab("repositories")}
+              repositories={summaries}
+              isLoading={isLoadingRepos}
+              error={reposError}
+              onRetry={() => {
+                setIsLoadingRepos(true);
+                void loadRepositories();
+              }}
+              onSelectRepo={(repo) => {
+                setCurrentRepoId(repo.id);
+                setActiveTab("changes");
+              }}
+              onNavigate={setActiveTab}
+              onAddRepository={() => void handleAddRepository()}
+              onCloneRequest={() => setActiveTab("repositories")}
             />
           </div>
         );
@@ -756,9 +827,7 @@ export const Shell: React.FC = () => {
               void handleCloneRepository(url, destination)
             }
             onRemoveRepository={(repoId) => void handleRemoveRepository(repoId)}
-            onRelinkRepository={(repoId, path) =>
-              handleRelinkRepository(repoId, path)
-            }
+            onRelinkRepository={(repoId, path) => handleRelinkRepository(repoId, path)}
             onOpenInFileManager={(path) => {
               openPathInFileManager(path).catch((err: unknown) =>
                 showError("Dosya Yöneticisinde Aç", err)
@@ -771,6 +840,11 @@ export const Shell: React.FC = () => {
       case "changes":
         return (
           <ChangesView
+            // CB-06 (WP-10a sürümü): depo değişimi = taze mount. Eski deponun
+            // dosya seçimi/diff/commit taslağı yeni depoya taşınmaz — bunu
+            // eskiden effect içindeki reset setState'ler yapıyordu; React
+            // "sıfırlama için key" desenini öneriyor.
+            key={currentRepo?.id ?? "none"}
             repoId={currentRepo?.id ?? null}
             currentRepo={currentRepo}
             onStatusChanged={() => {
@@ -779,7 +853,13 @@ export const Shell: React.FC = () => {
           />
         );
       case "history":
-        return <HistoryView repoId={currentRepo?.id ?? null} currentRepo={currentRepo} />;
+        return (
+          <HistoryView
+            key={currentRepo?.id ?? "none"}
+            repoId={currentRepo?.id ?? null}
+            currentRepo={currentRepo}
+          />
+        );
       case "branches":
         return (
           <BranchesView
@@ -867,7 +947,9 @@ export const Shell: React.FC = () => {
             void loadRepositories();
             if (outcomes.length > 0) {
               notify.info(
-                syncAllKind === "pull" ? "İçe aktarma tamamlandı" : "Dışa aktarma tamamlandı",
+                syncAllKind === "pull"
+                  ? "İçe aktarma tamamlandı"
+                  : "Dışa aktarma tamamlandı",
                 summarizeSync(outcomes)
               );
             }
@@ -895,7 +977,9 @@ export const Shell: React.FC = () => {
         />
       )}
 
-      <CommandPalette open={paletteOpen} items={paletteItems} onClose={() => setPaletteOpen(false)} />
+      {paletteOpen && (
+        <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />
+      )}
 
       {/* v0.2 — klasör bırakma overlay'i (madde 9) */}
       {isDragging && (

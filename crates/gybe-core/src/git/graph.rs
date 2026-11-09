@@ -52,9 +52,9 @@ pub fn compute_lanes(entries: &[(String, Vec<String>)]) -> Vec<GraphRow> {
         let mut edges: Vec<GraphEdge> = Vec::new();
 
         // 2) Ayni commit'i bekleyen diğer seritler bu noktada birleşir.
-        for i in 0..lanes.len() {
-            if i != lane && lanes[i].as_deref() == Some(sha.as_str()) {
-                lanes[i] = None;
+        for (i, slot) in lanes.iter_mut().enumerate() {
+            if i != lane && slot.as_deref() == Some(sha.as_str()) {
+                *slot = None;
                 edges.push(GraphEdge {
                     from_lane: i,
                     to_lane: lane,

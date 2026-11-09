@@ -79,11 +79,7 @@ const GraphStrip: React.FC<{ row: GraphRow; color: string; laneCount: number }> 
   const width = laneCount * GRAPH_COL_WIDTH + GRAPH_PAD * 2;
   const cx = (lane: number) => GRAPH_PAD + lane * GRAPH_COL_WIDTH + GRAPH_COL_WIDTH / 2;
   return (
-    <div
-      className="relative shrink-0 self-stretch"
-      style={{ width }}
-      aria-hidden="true"
-    >
+    <div className="relative shrink-0 self-stretch" style={{ width }} aria-hidden="true">
       <svg
         className="absolute inset-0 h-full w-full"
         viewBox={`0 0 ${width} 100`}
@@ -280,13 +276,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
 
   useEffect(() => {
     let ignore = false;
-    // Depo değişti: ESKİ deponun seçimi/anlık verisi yeni depoya taşınmasın
-    // (detay effect'i aksi halde yeniDepo+eskiSha ile boşa IPC atardı).
-    setSelectedCommit(null);
-    setCommits([]);
-    setGraph([]);
-    setHasMore(false);
-    setNextOffset(0);
+    // Depo değişimi = Shell'deki key={repoId} ile taze mount (WP-10a):
+    // seçim/liste sıfırlaması mount'un doğal hâli; bu effect yalnızca ilk
+    // yüklemeyi schedule eder (detay effect'i boş sha ile boşa IPC atmaz).
     const timer = setTimeout(() => {
       if (!ignore) void loadHistory(true);
     }, 0);
@@ -375,8 +367,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
   // v0.2 — Amend (madde 3): yalnızca son commit ve push edilmemişse izinli.
   // -------------------------------------------------------------------------
 
-  const aheadCount =
-    currentRepo && "ahead" in currentRepo ? (currentRepo.ahead ?? 0) : 0;
+  const aheadCount = currentRepo && "ahead" in currentRepo ? (currentRepo.ahead ?? 0) : 0;
 
   // sha → grafik satırı eşlemesi (arama filtresi indexleri kaydırır).
   const graphBySha = useMemo(
@@ -391,8 +382,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
     }
     return max;
   }, [graph]);
-  const isSelectedHead =
-    commits.length > 0 && selectedCommit?.sha === commits[0]?.sha;
+  const isSelectedHead = commits.length > 0 && selectedCommit?.sha === commits[0]?.sha;
   const canAmendLast = aheadCount > 0 && isSelectedHead;
 
   const openAmendModal = useCallback(() => {
@@ -835,9 +825,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({ repoId, currentRepo })
             <p className="text-xs text-slate-400 flex items-start gap-1.5">
               <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
               <span>
-                Bu işlem son commit'i değiştirir. Commit henüz push edilmediği
-                için güvenlidir. Yalnızca mesaj değişir; dosya içerikleri
-                etkilenmez.
+                Bu işlem son commit'i değiştirir. Commit henüz push edilmediği için
+                güvenlidir. Yalnızca mesaj değişir; dosya içerikleri etkilenmez.
               </span>
             </p>
             <textarea

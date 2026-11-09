@@ -10,7 +10,13 @@ function items(): PaletteItem[] {
   return [
     { id: "tab.changes", section: "Sekmeler", label: "Değişiklikler", run: vi.fn() },
     { id: "tab.settings", section: "Sekmeler", label: "Ayarlar", run: vi.fn() },
-    { id: "repo.r1", section: "Depolar", label: "demo", hint: "/repos/demo", run: vi.fn() },
+    {
+      id: "repo.r1",
+      section: "Depolar",
+      label: "demo",
+      hint: "/repos/demo",
+      run: vi.fn(),
+    },
     { id: "branch.r1.fx", section: "Dallar", label: "Dala geç: feature-x", run: vi.fn() },
     { id: "action.push", section: "İşlemler", label: "Dışa Aktar (Push)", run: vi.fn() },
   ];
@@ -19,13 +25,10 @@ function items(): PaletteItem[] {
 beforeEach(() => localStorage.clear());
 
 describe("CommandPalette", () => {
-  it("kapaliyken hicbir sey cizmez", () => {
-    render(<CommandPalette open={false} items={items()} onClose={() => {}} />);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
-
+  // WP-10a sözleşme değişti: kapalıyken bileşen hiç monte edilmez (koşullu
+  // render parent'ın işi) — eskiden open={false} ile "hiçbir şey çizmez"di.
   it("acikken ogeleri bolum basliklariyla listeler", () => {
-    render(<CommandPalette open items={items()} onClose={() => {}} />);
+    render(<CommandPalette items={items()} onClose={() => {}} />);
     const listbox = screen.getByRole("listbox");
     expect(within(listbox).getByText("Değişiklikler")).toBeInTheDocument();
     expect(within(listbox).getByText("Sekmeler")).toBeInTheDocument();
@@ -36,7 +39,7 @@ describe("CommandPalette", () => {
     const onClose = vi.fn();
     const list = items();
     const push = list.find((i) => i.id === "action.push")!;
-    render(<CommandPalette open items={list} onClose={onClose} />);
+    render(<CommandPalette items={list} onClose={onClose} />);
 
     fireEvent.change(screen.getByLabelText("Komut ara"), { target: { value: "push" } });
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter" });
@@ -47,12 +50,14 @@ describe("CommandPalette", () => {
 
   it("ok tuşları seçimi taşır (wrap-around)", () => {
     const list = items();
-    render(<CommandPalette open items={list} onClose={() => {}} />);
+    render(<CommandPalette items={list} onClose={() => {}} />);
     const dialog = screen.getByRole("dialog");
 
     // İlk seçim: birinci oge (Deği̇şiklikler) secili
     const option = () =>
-      screen.getAllByRole("option").find((el) => el.getAttribute("aria-selected") === "true");
+      screen
+        .getAllByRole("option")
+        .find((el) => el.getAttribute("aria-selected") === "true");
     expect(option()?.textContent).toContain("Değişiklikler");
 
     fireEvent.keyDown(dialog, { key: "ArrowDown" });
@@ -64,7 +69,7 @@ describe("CommandPalette", () => {
 
   it("Esc kapatir", () => {
     const onClose = vi.fn();
-    render(<CommandPalette open items={items()} onClose={onClose} />);
+    render(<CommandPalette items={items()} onClose={onClose} />);
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(onClose).toHaveBeenCalled();
   });
@@ -72,20 +77,18 @@ describe("CommandPalette", () => {
   it("son calistirilan komut bos sorguda en ustte görünür", () => {
     const list = items();
     const settings = list.find((i) => i.id === "tab.settings")!;
-    const { rerender } = render(
-      <CommandPalette open items={list} onClose={() => {}} />
-    );
+    const { rerender } = render(<CommandPalette items={list} onClose={() => {}} />);
     // Ayarlar'i calistir
     fireEvent.click(screen.getByText("Ayarlar"));
 
-    rerender(<CommandPalette open items={items()} onClose={() => {}} />);
+    rerender(<CommandPalette items={items()} onClose={() => {}} />);
     const options = screen.getAllByRole("option");
     expect(options[0].textContent).toContain("Ayarlar");
     expect(settings.run).toHaveBeenCalled();
   });
 
   it("eslesme yoksa dürüst boş durum", () => {
-    render(<CommandPalette open items={items()} onClose={() => {}} />);
+    render(<CommandPalette items={items()} onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText("Komut ara"), { target: { value: "qqqzzz" } });
     expect(screen.getByText("Eşleşen komut yok.")).toBeInTheDocument();
   });

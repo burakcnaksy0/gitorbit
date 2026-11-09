@@ -81,18 +81,14 @@ beforeEach(() => {
 
 describe("HistoryView amend (v0.2)", () => {
   it("ahead > 0 ve HEAD seçiliyken 'Mesajı düzenle' butonu görünür", async () => {
-    render(
-      <HistoryView repoId="repo-1" currentRepo={repoSummary({ ahead: 2 })} />
-    );
+    render(<HistoryView repoId="repo-1" currentRepo={repoSummary({ ahead: 2 })} />);
     expect(
       await screen.findByRole("button", { name: "Commit mesajını düzenle" })
     ).toBeInTheDocument();
   });
 
   it("ahead = 0 iken (commit push edilmiş) buton GÖRÜNMEZ", async () => {
-    render(
-      <HistoryView repoId="repo-1" currentRepo={repoSummary({ ahead: 0 })} />
-    );
+    render(<HistoryView repoId="repo-1" currentRepo={repoSummary({ ahead: 0 })} />);
     // Detay paneli render olsun (başlık listede + detayda iki yerde).
     await screen.findAllByText("eski başlık");
     expect(
@@ -118,9 +114,7 @@ describe("HistoryView amend (v0.2)", () => {
       },
     });
 
-    render(
-      <HistoryView repoId="repo-1" currentRepo={repoSummary({ ahead: 1 })} />
-    );
+    render(<HistoryView repoId="repo-1" currentRepo={repoSummary({ ahead: 1 })} />);
     fireEvent.click(
       await screen.findByRole("button", { name: "Commit mesajını düzenle" })
     );
@@ -138,9 +132,7 @@ describe("HistoryView amend (v0.2)", () => {
   });
 
   it("boş mesaj kaydedilemez (buton pasif, hata metni yok — yalnız guard)", async () => {
-    render(
-      <HistoryView repoId="repo-1" currentRepo={repoSummary({ ahead: 1 })} />
-    );
+    render(<HistoryView repoId="repo-1" currentRepo={repoSummary({ ahead: 1 })} />);
     fireEvent.click(
       await screen.findByRole("button", { name: "Commit mesajını düzenle" })
     );

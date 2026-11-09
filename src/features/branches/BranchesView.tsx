@@ -447,9 +447,8 @@ export const BranchesView: React.FC<BranchesViewProps> = ({
               </div>
             </div>
             <p className="text-[11px] text-slate-400 bg-slate-950 p-3 rounded-lg border border-slate-800">
-              Gybe, kaydedilmemiş dosyalarınızı otomatik olarak silmez veya ezmez.
-              Lütfen önce Değişiklikler ekranından dosyalarınızı commit edin veya geri
-              alın.
+              Gybe, kaydedilmemiş dosyalarınızı otomatik olarak silmez veya ezmez. Lütfen
+              önce Değişiklikler ekranından dosyalarınızı commit edin veya geri alın.
             </p>
             <div className="flex justify-end pt-2">
               <button

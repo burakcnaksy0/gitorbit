@@ -507,7 +507,7 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
   // v0.2 — Çakışma yardımcı paneli (madde 7)
   const [conflictBusy, setConflictBusy] = useState<string | null>(null);
   const [abortArmed, setAbortArmed] = useState(false);
-  const conflictTotalRef = useRef(0);
+  const [conflictTotal, setConflictTotal] = useState(0);
 
   // -------------------------------------------------------------------------
   // Toplu Stage / Unstage
@@ -573,13 +573,9 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
     if (!repoId) return;
     let ignore = false;
 
-    // CB-06: depo değişti — ESKİ deponun dosya seçimi, diff görüntüsü ve
-    // yazılmakta olan commit taslağı yeni depoya taşınmamalı (A'ya yazılan
-    // mesaj B'ye commit'lenebilirdi). Aşağıdaki status fetch'i yeni depo için
-    // doğru varsayılan seçimi zaten yapar.
-    setSelectedFile(null);
-    setDiff(null);
-    setCommitMessage("");
+    // CB-06: eski deponun seçimi/diffi/taslağı yeni depoya taşınmaz — temiz
+    // başlangıç artık Shell'deki key={repoId} remount'ının işi (WP-10a);
+    // bu effect yalnızca mount'taki ilk status fetch'ini schedule eder.
 
     // Asynchronously fetch initial status
     const timer = setTimeout(() => {
@@ -919,14 +915,24 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
       setStashModalOpen(false);
       setStashMessage("");
       await refreshStashes();
-      notify.success("Değişiklikler kenara alındı", stashMessage.trim() || "stash@ kaydedildi");
+      notify.success(
+        "Değişiklikler kenara alındı",
+        stashMessage.trim() || "stash@ kaydedildi"
+      );
     } catch (err) {
       const e = err as AppError;
       setActionError(e.message ?? "Stash alınamadı.");
     } finally {
       setIsStashing(false);
     }
-  }, [notify, onStatusChanged, refreshStashes, repoId, stashIncludeUntracked, stashMessage]);
+  }, [
+    notify,
+    onStatusChanged,
+    refreshStashes,
+    repoId,
+    stashIncludeUntracked,
+    stashMessage,
+  ]);
 
   const handleStashRestore = useCallback(
     async (entry: StashEntry, mode: "apply" | "pop") => {
@@ -942,7 +948,9 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
         await refreshStashes();
         notify.success(
           mode === "pop" ? "Stash geri yüklendi" : "Stash uygulandı",
-          mode === "pop" ? `#${entry.index} listeden düşürüldü` : `#${entry.index} korundu`
+          mode === "pop"
+            ? `#${entry.index} listeden düşürüldü`
+            : `#${entry.index} korundu`
         );
       } catch (err) {
         const e = err as AppError;
@@ -981,11 +989,13 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
   const inConflictFlow = operationState !== "normal" || conflictedFiles.length > 0;
 
   // Çözülen sayacı: işlem boyunca görülen en yüksek çakışma sayısı toplamdır.
-  if (inConflictFlow && conflictedFiles.length > conflictTotalRef.current) {
-    conflictTotalRef.current = conflictedFiles.length;
+  // Guard'lı render-güncellemesi (React dokümanı deseni): koşul sabitlenince
+  // setState bir daha çalışmaz; ref yerine state — JSX'te de reaktif okunur.
+  if (inConflictFlow && conflictedFiles.length > conflictTotal) {
+    setConflictTotal(conflictedFiles.length);
   }
-  if (!inConflictFlow && conflictTotalRef.current !== 0) {
-    conflictTotalRef.current = 0;
+  if (!inConflictFlow && conflictTotal !== 0) {
+    setConflictTotal(0);
     setAbortArmed(false);
   }
 
@@ -1217,10 +1227,9 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
                       : "Tüm çakışmalar çözüldü"}
                   </span>
                 </div>
-                {conflictTotalRef.current > 0 && (
+                {conflictTotal > 0 && (
                   <span className="text-[10px] font-mono text-rose-300/80 shrink-0">
-                    {conflictTotalRef.current - conflictedFiles.length}/
-                    {conflictTotalRef.current} çözüldü
+                    {conflictTotal - conflictedFiles.length}/{conflictTotal} çözüldü
                   </span>
                 )}
               </div>
@@ -1232,7 +1241,10 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
                       key={path}
                       className="rounded bg-slate-950/60 border border-slate-800 px-2 py-1.5"
                     >
-                      <p className="text-[11px] font-mono text-slate-200 truncate" title={path}>
+                      <p
+                        className="text-[11px] font-mono text-slate-200 truncate"
+                        title={path}
+                      >
                         {path}
                       </p>
                       <div className="flex flex-wrap items-center gap-1 mt-1">
@@ -1283,8 +1295,8 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
                 </ul>
               ) : (
                 <p className="text-[11px] text-emerald-300/90">
-                  İşlemi tamamlayabilir veya başa dönebilirsin. İptal, bu işleme
-                  kadar yapılan çözümleri geri alır.
+                  İşlemi tamamlayabilir veya başa dönebilirsin. İptal, bu işleme kadar
+                  yapılan çözümleri geri alır.
                 </p>
               )}
 
@@ -1717,8 +1729,8 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
               <h3 className="text-sm font-bold text-slate-100">Dosyayı yoksay</h3>
             </div>
             <p className="text-xs text-slate-400">
-              <code className="text-slate-200 break-all">{ignoreTarget.path}</code>{" "}
-              artık değişiklik listesinde görünmeyecek. Nereye yazılsın?
+              <code className="text-slate-200 break-all">{ignoreTarget.path}</code> artık
+              değişiklik listesinde görünmeyecek. Nereye yazılsın?
             </p>
             <div className="space-y-2 pt-1">
               <button
@@ -1776,7 +1788,9 @@ export const ChangesView: React.FC<ChangesViewProps> = ({
           >
             <div className="flex items-center gap-2">
               <Archive className="w-4 h-4 text-amber-400 shrink-0" />
-              <h3 className="text-sm font-bold text-slate-100">Değişiklikleri kenara al</h3>
+              <h3 className="text-sm font-bold text-slate-100">
+                Değişiklikleri kenara al
+              </h3>
             </div>
             <p className="text-xs text-slate-400">
               Tüm staged + unstaged değişiklikler geçici olarak kaldırılır ve çalışma

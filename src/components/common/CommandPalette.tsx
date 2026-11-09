@@ -3,6 +3,12 @@
  *
  * Genel bileşen: komut listesi dışarıdan gelir (Shell kurar), bileşen yalnız
  * arama + klavye navigasyonu + son kullanılanlar sıralamasını yönetir.
+ *
+ * Açılış/kapanış sözleşmesi (WP-10a): bileşen YALNIZCA açıkken monte edilir —
+ * parent koşullu render eder. "Açılışta sıfırla" taze mount'un doğal
+ * sonucudur; eski `open` prop'u + reset-effect deseni, React'in
+ * effect-anti-pattern kapısından (react-hooks/set-state-in-effect) geçtiği
+ * için bırakıldı. Kapanış odağı parent'ın (Shell) sorumluluğundadır.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { CornerDownLeft, Search } from "lucide-react";
@@ -20,31 +26,21 @@ export interface PaletteItem {
 }
 
 interface CommandPaletteProps {
-  open: boolean;
   items: PaletteItem[];
   onClose: () => void;
 }
 
-export const CommandPalette: React.FC<CommandPaletteProps> = ({
-  open,
-  items,
-  onClose,
-}) => {
+export const CommandPalette: React.FC<CommandPaletteProps> = ({ items, onClose }) => {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const [recents, setRecents] = useState<string[]>(() => loadRecents());
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Açılışta sıfırla ve odakla.
+  // Mount olur olmaz (palet açılınca) inputa odak — DOM sistemi, effect'in işi.
   useEffect(() => {
-    if (open) {
-      setQuery("");
-      setSelected(0);
-      setRecents(loadRecents());
-      const timer = setTimeout(() => inputRef.current?.focus(), 0);
-      return () => clearTimeout(timer);
-    }
-  }, [open]);
+    const timer = setTimeout(() => inputRef.current?.focus(), 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   const visible = useMemo(() => {
     const matched = fuzzyFilter(query, items, (i) =>
@@ -59,14 +55,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     return [...recentItems, ...rest];
   }, [items, query, recents]);
 
-  // Sorgu değişince seçimi başa al; seçim taşarsa sınırla.
-  useEffect(() => {
-    setSelected((prev) => Math.min(prev, Math.max(0, visible.length - 1)));
-  }, [visible.length, query]);
-
   // Pencere düzeyinde Esc: odak input dışında olsa bile paleti kapatır.
   useEffect(() => {
-    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -75,7 +65,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [onClose]);
 
   const runItem = (item: PaletteItem) => {
     setRecents(pushRecent(item.id));
@@ -86,7 +76,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   // Bölüm başlıklarıyla çizilecek sıralı satırlar.
   const rows = useMemo(() => {
     const out: Array<
-      { kind: "header"; section: string } | { kind: "item"; item: PaletteItem; index: number }
+      | { kind: "header"; section: string }
+      | { kind: "item"; item: PaletteItem; index: number }
     > = [];
     let lastSection: string | null = null;
     visible.forEach((item, index) => {
@@ -99,18 +90,26 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     return out;
   }, [visible]);
 
-  if (!open) return null;
+  // Seçim taşarsa okurken sınırla (türetilmiş değer — eski clamp-effect'in
+  // birebir karşılığı; sorgu/depo değişiminde otomatik geçerli).
+  const selectedSafe = visible.length === 0 ? 0 : Math.min(selected, visible.length - 1);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setSelected((s) => (visible.length === 0 ? 0 : (s + 1) % visible.length));
+      setSelected((s) =>
+        visible.length === 0 ? 0 : (Math.min(s, visible.length - 1) + 1) % visible.length
+      );
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setSelected((s) => (visible.length === 0 ? 0 : (s - 1 + visible.length) % visible.length));
+      setSelected((s) =>
+        visible.length === 0
+          ? 0
+          : (Math.min(s, visible.length - 1) - 1 + visible.length) % visible.length
+      );
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const item = visible[selected];
+      const item = visible[selectedSafe];
       if (item) runItem(item);
     }
   };
@@ -170,7 +169,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               );
             }
             const { item, index } = row;
-            const isSelected = index === selected;
+            const isSelected = index === selectedSafe;
             return (
               <li
                 key={item.id}
@@ -179,17 +178,25 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 onMouseEnter={() => setSelected(index)}
                 onClick={() => runItem(item)}
                 className={`mx-1 flex items-center gap-2.5 rounded-lg px-3 py-2 cursor-pointer text-xs ${
-                  isSelected ? "bg-sky-600/25 text-sky-100" : "text-slate-300 hover:bg-slate-800"
+                  isSelected
+                    ? "bg-sky-600/25 text-sky-100"
+                    : "text-slate-300 hover:bg-slate-800"
                 }`}
               >
-                {item.icon && <span className="shrink-0 text-slate-400">{item.icon}</span>}
+                {item.icon && (
+                  <span className="shrink-0 text-slate-400">{item.icon}</span>
+                )}
                 <span className="flex-1 min-w-0">
                   <span className="block truncate font-medium">{item.label}</span>
                   {item.hint && (
-                    <span className="block truncate text-[10px] text-slate-500">{item.hint}</span>
+                    <span className="block truncate text-[10px] text-slate-500">
+                      {item.hint}
+                    </span>
                   )}
                 </span>
-                {isSelected && <CornerDownLeft className="w-3 h-3 text-sky-400 shrink-0" />}
+                {isSelected && (
+                  <CornerDownLeft className="w-3 h-3 text-sky-400 shrink-0" />
+                )}
               </li>
             );
           })}

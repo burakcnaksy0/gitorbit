@@ -11,8 +11,7 @@ import {
   sendNotification,
 } from "@tauri-apps/plugin-notification";
 
-let windowFocused =
-  typeof document === "undefined" ? false : document.hasFocus();
+let windowFocused = typeof document === "undefined" ? false : document.hasFocus();
 
 if (typeof window !== "undefined") {
   window.addEventListener("focus", () => {

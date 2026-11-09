@@ -63,7 +63,9 @@ export function loadRecents(): string[] {
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((x): x is string => typeof x === "string").slice(0, RECENT_LIMIT);
+    return parsed
+      .filter((x): x is string => typeof x === "string")
+      .slice(0, RECENT_LIMIT);
   } catch {
     return [];
   }

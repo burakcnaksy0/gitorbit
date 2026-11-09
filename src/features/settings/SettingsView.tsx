@@ -257,8 +257,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 Uzaktan Değişiklikleri Otomatik Kontrol Et
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Uygulama açıkken belirli aralıklarla fetch yapılır; uzakta yeni
-                commit varsa rozetlerde görünür. Pull otomatik yapılmaz.
+                Uygulama açıkken belirli aralıklarla fetch yapılır; uzakta yeni commit
+                varsa rozetlerde görünür. Pull otomatik yapılmaz.
               </p>
             </div>
             <button
@@ -270,7 +270,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 void handleAutoFetchSave({ auto_fetch: !(settings?.auto_fetch ?? true) })
               }
               className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors cursor-pointer disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-sky-400 ${
-                settings?.auto_fetch ?? true
+                (settings?.auto_fetch ?? true)
                   ? "bg-sky-600 border-sky-500"
                   : "bg-slate-700 border-slate-600"
               }`}
@@ -278,12 +278,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             >
               <span
                 className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                  settings?.auto_fetch ?? true ? "translate-x-[18px]" : "translate-x-[3px]"
+                  (settings?.auto_fetch ?? true)
+                    ? "translate-x-[18px]"
+                    : "translate-x-[3px]"
                 }`}
               />
             </button>
           </div>
-          {settings?.auto_fetch ?? true ? (
+          {(settings?.auto_fetch ?? true) ? (
             <label className="flex items-center gap-2 text-xs text-slate-300">
               Aralık:
               <select
@@ -313,7 +315,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <section className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-bold text-slate-100">İlk Çalışma Yönlendirmesi</h2>
+              <h2 className="text-sm font-bold text-slate-100">
+                İlk Çalışma Yönlendirmesi
+              </h2>
               <p className="text-[11px] text-slate-400 mt-1">
                 {settings?.onboarding_completed
                   ? "Kapalı — hoş geldin ekranındaki 3 adımlık rehber gizleniyor."
@@ -322,10 +326,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
             <button
               type="button"
-              disabled={!onSaveSettings || autoFetchBusy || settings?.onboarding_completed === false}
-              onClick={() =>
-                void handleAutoFetchSave({ onboarding_completed: false })
+              disabled={
+                !onSaveSettings ||
+                autoFetchBusy ||
+                settings?.onboarding_completed === false
               }
+              onClick={() => void handleAutoFetchSave({ onboarding_completed: false })}
               className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               Yeniden Göster

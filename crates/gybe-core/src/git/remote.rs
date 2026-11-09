@@ -560,21 +560,23 @@ impl GitRemoteManager {
     /// `git@<ssh-host-alias>:owner/repo.git`, `ssh://git@host/owner/repo(.git)`.
     pub fn parse_remote_owner(url: &str) -> Option<(String, bool)> {
         let url = url.trim();
-        let path = if let Some(rest) = url
+        // owner/repo yolunu uc URL biciminden cikar: https://host/o/r,
+        // ssh://git@host/o/r, git@host:o/r (host bir ssh alias'i de olabilir).
+        // Onceden her dal `?` ile erken donuyordu; or_else zinciri ayni sonucu
+        // verir (oneklar karsilikli dışlayici).
+        let path = url
             .strip_prefix("https://")
             .or_else(|| url.strip_prefix("http://"))
-        {
-            // host/owner/repo(.git)
-            rest.split_once('/')?.1
-        } else if let Some(rest) = url.strip_prefix("ssh://") {
-            // ssh://git@host/owner/repo
-            rest.split_once('/')?.1
-        } else if let Some(rest) = url.strip_prefix("git@") {
-            // git@host:owner/repo — host bir ssh alias'i de olabilir
-            rest.split_once(':')?.1
-        } else {
-            return None;
-        };
+            .and_then(|rest| rest.split_once('/'))
+            .or_else(|| {
+                url.strip_prefix("ssh://")
+                    .and_then(|rest| rest.split_once('/'))
+            })
+            .or_else(|| {
+                url.strip_prefix("git@")
+                    .and_then(|rest| rest.split_once(':'))
+            })
+            .map(|(_, path)| path)?;
         let mut segments = path.trim_matches('/').split('/');
         let owner = segments.next()?.trim();
         let repo = segments.next()?.trim();

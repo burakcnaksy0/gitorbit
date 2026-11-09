@@ -227,6 +227,7 @@ impl GitCommitManager {
     /// Amend-güvenliği kararının saf hali:
     /// - upstream varsa: son commit yalnızca `ahead > 0` ise upstream'de değildir.
     /// - upstream yoksa: HEAD herhangi bir uzak-takip dalındaysa push edilmiştir.
+    ///
     /// Saf fonksiyon — birim testli.
     pub fn amend_allowed(upstream: Option<&str>, ahead: u32, head_on_remote: bool) -> bool {
         match upstream {

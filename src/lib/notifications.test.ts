@@ -12,10 +12,7 @@ const plugin = vi.hoisted(() => ({
 
 vi.mock("@tauri-apps/plugin-notification", () => plugin);
 
-import {
-  notifySystem,
-  __setWindowFocusedForTests,
-} from "./notifications";
+import { notifySystem, __setWindowFocusedForTests } from "./notifications";
 
 beforeEach(() => {
   vi.clearAllMocks();

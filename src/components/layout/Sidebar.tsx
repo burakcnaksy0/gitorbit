@@ -135,15 +135,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {item.badge}
                   </span>
                 )}
-                {!isCollapsed && item.id === "repositories" && (incomingCount ?? 0) > 0 && (
-                  <span
-                    className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-sky-950 text-sky-300 border border-sky-800/60"
-                    title={`${incomingCount} uzak commit bekliyor (pull hazır)`}
-                    aria-label={`${incomingCount} bekleyen uzak commit`}
-                  >
-                    ↓{incomingCount}
-                  </span>
-                )}
+                {!isCollapsed &&
+                  item.id === "repositories" &&
+                  (incomingCount ?? 0) > 0 && (
+                    <span
+                      className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-sky-950 text-sky-300 border border-sky-800/60"
+                      title={`${incomingCount} uzak commit bekliyor (pull hazır)`}
+                      aria-label={`${incomingCount} bekleyen uzak commit`}
+                    >
+                      ↓{incomingCount}
+                    </span>
+                  )}
               </button>
             );
           })}

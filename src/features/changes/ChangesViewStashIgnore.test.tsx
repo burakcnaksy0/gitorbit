@@ -114,7 +114,9 @@ describe("ChangesView stash akışı (v0.2)", () => {
     vi.mocked(tauriCommands.repositoryStashPush).mockResolvedValue(cleanStatus);
     render(<ChangesView repoId="repo-1" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Değişiklikleri kenara al" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Değişiklikleri kenara al" })
+    );
     fireEvent.change(screen.getByPlaceholderText(/wip: arama filtresi/), {
       target: { value: "wip: filtre" },
     });
@@ -135,7 +137,9 @@ describe("ChangesView stash akışı (v0.2)", () => {
     vi.mocked(tauriCommands.repositoryStashDrop).mockResolvedValue([]);
 
     render(<ChangesView repoId="repo-1" />);
-    fireEvent.click(await screen.findByRole("button", { name: /Stash listesini göster/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Stash listesini göster/i })
+    );
 
     expect(await screen.findByText(/#0 — main: wip başlığı/)).toBeInTheDocument();
 
@@ -161,7 +165,9 @@ describe("ChangesView stash akışı (v0.2)", () => {
     vi.mocked(tauriCommands.repositoryStashDrop).mockReturnValue(dropPromise);
 
     render(<ChangesView repoId="repo-1" />);
-    fireEvent.click(await screen.findByRole("button", { name: /Stash listesini göster/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Stash listesini göster/i })
+    );
     fireEvent.click(await screen.findByRole("button", { name: "stash 0 sil" }));
 
     const confirm = await screen.findByRole("button", { name: "Kalıcı Olarak Sil" });

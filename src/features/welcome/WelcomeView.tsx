@@ -129,57 +129,57 @@ export const WelcomeView: React.FC<WelcomeViewProps> = ({
                   .sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false))
                   .slice(0, 5)
                   .map((repo) => (
-                  <div
-                    key={repo.id}
-                    onClick={() => onSelectRepo(repo)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onSelectRepo(repo);
-                      }
-                    }}
-                    tabIndex={0}
-                    role="button"
-                    className="w-full flex items-center justify-between p-3 rounded-lg bg-slate-950/60 hover:bg-slate-800/60 border border-slate-800/80 transition-colors text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
-                  >
-                    <div className="min-w-0 pr-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-xs text-slate-100 truncate">
-                          {repo.name}
-                        </span>
-                        {repo.currentBranch && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-cyan-400 border border-slate-700">
-                            {repo.currentBranch}
+                    <div
+                      key={repo.id}
+                      onClick={() => onSelectRepo(repo)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          onSelectRepo(repo);
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      className="w-full flex items-center justify-between p-3 rounded-lg bg-slate-950/60 hover:bg-slate-800/60 border border-slate-800/80 transition-colors text-left cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-400"
+                    >
+                      <div className="min-w-0 pr-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-xs text-slate-100 truncate">
+                            {repo.name}
                           </span>
-                        )}
-                        {repo.missing && (
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-400 border border-rose-800">
-                            bulunamadı
-                          </span>
-                        )}
+                          {repo.currentBranch && (
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-cyan-400 border border-slate-700">
+                              {repo.currentBranch}
+                            </span>
+                          )}
+                          {repo.missing && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-400 border border-rose-800">
+                              bulunamadı
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-400 truncate mt-1">
+                          {repo.lastCommitMessage ?? repo.path}
+                        </div>
                       </div>
-                      <div className="text-[11px] text-slate-400 truncate mt-1">
-                        {repo.lastCommitMessage ?? repo.path}
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-3 shrink-0 text-right">
-                      <div className="text-[10px] text-slate-500 font-mono hidden sm:block">
-                        {repo.lastCommitDate && (
-                          <div className="flex items-center gap-1 justify-end">
-                            <Clock className="w-3 h-3" />
-                            <span>{repo.lastCommitDate}</span>
-                          </div>
+                      <div className="flex items-center gap-3 shrink-0 text-right">
+                        <div className="text-[10px] text-slate-500 font-mono hidden sm:block">
+                          {repo.lastCommitDate && (
+                            <div className="flex items-center gap-1 justify-end">
+                              <Clock className="w-3 h-3" />
+                              <span>{repo.lastCommitDate}</span>
+                            </div>
+                          )}
+                        </div>
+                        {(repo.stagedCount > 0 || repo.unstagedCount > 0) && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-950/80 text-amber-400 border border-amber-800/60 font-mono">
+                            {repo.stagedCount + repo.unstagedCount} değişiklik
+                          </span>
                         )}
                       </div>
-                      {(repo.stagedCount > 0 || repo.unstagedCount > 0) && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-950/80 text-amber-400 border border-amber-800/60 font-mono">
-                          {repo.stagedCount + repo.unstagedCount} değişiklik
-                        </span>
-                      )}
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             )}
           </div>

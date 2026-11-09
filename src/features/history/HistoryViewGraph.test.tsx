@@ -28,16 +28,28 @@ function commit(sha: string, parents: string[], refs: string[] = []): CommitInfo
   };
 }
 
-const merge = commit("m".repeat(40), ["a".repeat(40), "b".repeat(40)], ["main", "tag:v1.0"]);
+const merge = commit(
+  "m".repeat(40),
+  ["a".repeat(40), "b".repeat(40)],
+  ["main", "tag:v1.0"]
+);
 const a = commit("a".repeat(40), ["x".repeat(40)]);
 const b = commit("b".repeat(40), ["x".repeat(40)], ["origin/feature"]);
 const x = commit("x".repeat(40), []);
 
 // M(A,B) → lane 0 acilir, B lane 1'de yurur, X'te birlesir.
 const graph: GraphRow[] = [
-  { lane: 0, active_lanes: [0, 1], edges: [{ from_lane: 0, to_lane: 1, kind: "branch_out" }] },
+  {
+    lane: 0,
+    active_lanes: [0, 1],
+    edges: [{ from_lane: 0, to_lane: 1, kind: "branch_out" }],
+  },
   { lane: 0, active_lanes: [0, 1], edges: [] },
-  { lane: 1, active_lanes: [0, 1], edges: [{ from_lane: 1, to_lane: 0, kind: "branch_out" }] },
+  {
+    lane: 1,
+    active_lanes: [0, 1],
+    edges: [{ from_lane: 1, to_lane: 0, kind: "branch_out" }],
+  },
   { lane: 0, active_lanes: [0], edges: [] },
 ];
 

@@ -116,9 +116,10 @@ describe("useAutoFetch", () => {
   it("eşzamanlı tur koruması: tur bitmeden ikinci tur başlamaz", async () => {
     let release: (() => void) | null = null;
     vi.mocked(repositoryFetch).mockImplementation(
-      () => new Promise<GitStatus>((resolve) => {
-        release = () => resolve(statusFor("a"));
-      })
+      () =>
+        new Promise<GitStatus>((resolve) => {
+          release = () => resolve(statusFor("a"));
+        })
     );
     const { result } = renderHook(() =>
       useAutoFetch({

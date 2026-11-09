@@ -7,13 +7,7 @@
  * kapatır; Ayarlar'dan yeniden açılabilir.
  */
 import React, { useEffect, useState } from "react";
-import {
-  Check,
-  FolderGit2,
-  Link2,
-  ListChecks,
-  Sparkles,
-} from "lucide-react";
+import { Check, FolderGit2, Link2, ListChecks, Sparkles } from "lucide-react";
 import { githubListAccounts } from "../../lib/tauriCommands";
 
 interface OnboardingCardsProps {

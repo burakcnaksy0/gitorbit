@@ -1563,12 +1563,11 @@ pub fn run() {
         .run(|app, event| {
             // Temiz kapanış: WAL'ı ana DB'ye erit (-wal dosyasının sınırsız
             // büyümesi ve ani kapatmada kurtarma yüzeyi azalır).
-            if let tauri::RunEvent::Exit { .. } = event {
-                if let Some(state) = app.try_state::<AppState>()
-                    && let Ok(db) = state.db.lock()
-                {
-                    let _ = db.checkpoint_wal();
-                }
+            if let tauri::RunEvent::Exit = event
+                && let Some(state) = app.try_state::<AppState>()
+                && let Ok(db) = state.db.lock()
+            {
+                let _ = db.checkpoint_wal();
             }
         });
 }

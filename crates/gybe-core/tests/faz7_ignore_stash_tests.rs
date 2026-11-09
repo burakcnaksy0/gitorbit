@@ -397,7 +397,7 @@ fn setup_conflict(repo: &Path) {
     run_cmd(repo, &["commit", "-am", "main degisti"]);
 
     // Merge cakisma uretmeli — hata bekleniyor, state merge_in_progress kalmali.
-    let _ = run_cmd_allow_fail(repo, &["merge", "--no-edit", "feature"]);
+    run_cmd_allow_fail(repo, &["merge", "--no-edit", "feature"]);
 }
 
 #[test]

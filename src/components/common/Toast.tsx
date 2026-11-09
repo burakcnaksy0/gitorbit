@@ -82,7 +82,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const notify = useCallback<ToastApi["notify"]>(
     ({ title, description, tone = "info", durationMs = DEFAULT_DURATION_MS }) => {
       const id = nextId.current++;
-      setToasts((prev) => [...prev.slice(-(MAX_VISIBLE - 1)), { id, tone, title, description }]);
+      setToasts((prev) => [
+        ...prev.slice(-(MAX_VISIBLE - 1)),
+        { id, tone, title, description },
+      ]);
       timers.current.set(
         id,
         setTimeout(() => dismiss(id), durationMs)

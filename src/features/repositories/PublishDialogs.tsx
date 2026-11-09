@@ -63,85 +63,85 @@ export const NotGitChoiceModal: React.FC<NotGitChoiceModalProps> = ({
       aria-modal="true"
       aria-labelledby="not-git-title"
     >
-    <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-lg w-full p-6 space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <FolderGit2 className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
-          <div>
-            <h2 id="not-git-title" className="text-sm font-bold text-slate-100">
-              Bu klasör bir Git deposu değil
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">
-              Ne yapmak istersiniz? Klasör içeriğine dokunulmaz; yalnızca{" "}
-              <code className="text-slate-300">git init</code> çalıştırılır.
-            </p>
+      <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-lg w-full p-6 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <FolderGit2 className="w-5 h-5 text-sky-400 shrink-0 mt-0.5" />
+            <div>
+              <h2 id="not-git-title" className="text-sm font-bold text-slate-100">
+                Bu klasör bir Git deposu değil
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">
+                Ne yapmak istersiniz? Klasör içeriğine dokunulmaz; yalnızca{" "}
+                <code className="text-slate-300">git init</code> çalıştırılır.
+              </p>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            aria-label="Kapat"
+            className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
+
+        <div className="bg-slate-950 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 border border-slate-800 break-all">
+          {path}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <button
+            id="init-local"
+            type="button"
+            onClick={onInitLocal}
+            disabled={busy}
+            className="flex flex-col items-start gap-1.5 p-4 rounded-xl bg-slate-800/70 hover:bg-slate-700/70 border border-slate-700 hover:border-slate-500 text-left transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-100">
+              {busy ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <FolderGit2 className="w-4 h-4 text-sky-400" />
+              )}
+              Git deposu olarak başlat
+            </span>
+            <span className="text-[11px] text-slate-400">
+              Yerel bir depoya dönüştürülür ve normal şekilde kullanılır. GitHub'a sonra
+              da yayınlayabilirsiniz.
+            </span>
+          </button>
+
+          <button
+            id="init-and-publish"
+            type="button"
+            onClick={onInitAndPublish}
+            disabled={busy}
+            className="flex flex-col items-start gap-1.5 p-4 rounded-xl bg-sky-950/40 hover:bg-sky-900/40 border border-sky-800/50 hover:border-sky-600 text-left transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            <span className="inline-flex items-center gap-2 text-sm font-semibold text-sky-300">
+              <Rocket className="w-4 h-4" />
+              Başlat ve GitHub'da yayınla
+            </span>
+            <span className="text-[11px] text-slate-400">
+              Önce <code>git init</code>, ardından GitHub'da yeni bir depo oluşturup ilk
+              gönderim yapılır.
+            </span>
+          </button>
+        </div>
+
         <button
           type="button"
           onClick={onClose}
           disabled={busy}
-          aria-label="Kapat"
-          className="p-1 rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-50 cursor-pointer"
+          className="w-full py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors disabled:opacity-50 cursor-pointer"
         >
-          <X className="w-4 h-4" />
+          Vazgeç
         </button>
       </div>
-
-      <div className="bg-slate-950 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 border border-slate-800 break-all">
-        {path}
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-        <button
-          id="init-local"
-          type="button"
-          onClick={onInitLocal}
-          disabled={busy}
-          className="flex flex-col items-start gap-1.5 p-4 rounded-xl bg-slate-800/70 hover:bg-slate-700/70 border border-slate-700 hover:border-slate-500 text-left transition-colors disabled:opacity-50 cursor-pointer"
-        >
-          <span className="inline-flex items-center gap-2 text-sm font-semibold text-slate-100">
-            {busy ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <FolderGit2 className="w-4 h-4 text-sky-400" />
-            )}
-            Git deposu olarak başlat
-          </span>
-          <span className="text-[11px] text-slate-400">
-            Yerel bir depoya dönüştürülür ve normal şekilde kullanılır. GitHub'a sonra da
-            yayınlayabilirsiniz.
-          </span>
-        </button>
-
-        <button
-          id="init-and-publish"
-          type="button"
-          onClick={onInitAndPublish}
-          disabled={busy}
-          className="flex flex-col items-start gap-1.5 p-4 rounded-xl bg-sky-950/40 hover:bg-sky-900/40 border border-sky-800/50 hover:border-sky-600 text-left transition-colors disabled:opacity-50 cursor-pointer"
-        >
-          <span className="inline-flex items-center gap-2 text-sm font-semibold text-sky-300">
-            <Rocket className="w-4 h-4" />
-            Başlat ve GitHub'da yayınla
-          </span>
-          <span className="text-[11px] text-slate-400">
-            Önce <code>git init</code>, ardından GitHub'da yeni bir depo oluşturup ilk
-            gönderim yapılır.
-          </span>
-        </button>
-      </div>
-
-      <button
-        type="button"
-        onClick={onClose}
-        disabled={busy}
-        className="w-full py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors disabled:opacity-50 cursor-pointer"
-      >
-        Vazgeç
-      </button>
     </div>
-  </div>
   );
 };
 
@@ -283,7 +283,11 @@ export const PublishRepoModal: React.FC<PublishRepoModalProps> = ({
                     className="w-full appearance-none rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 pr-9 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-sky-400"
                   >
                     {accounts.map((a) => (
-                      <option key={a.id} value={a.id} className="bg-slate-900 text-slate-100">
+                      <option
+                        key={a.id}
+                        value={a.id}
+                        className="bg-slate-900 text-slate-100"
+                      >
                         @{a.login}
                       </option>
                     ))}

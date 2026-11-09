@@ -492,7 +492,7 @@ pub struct GitHubService {
     client: Box<dyn GitHubHttpClient>,
     store: Box<dyn CredentialStore>,
     /// v0.2.1: eşzamanlı refresh denemelerini sıraya alır (otomatik-fetch turu
-    /// + kullanıcı push'u aynı anda token yenilemeye çalışırsa rotasyon
+    /// ile kullanıcı push'u aynı anda token yenilemeye çalışırsa rotasyon
     /// çakışması/çift istek oluşmasın). Kilit yalnızca kısa refresh bölümünü
     /// kapsar; token değeri kilidi asla taşımaz.
     refresh_lock: std::sync::Mutex<()>,
@@ -766,7 +766,7 @@ impl GitHubService {
         db: &Database,
         owner: &str,
     ) -> Result<Option<GitHubAccount>, CommandError> {
-        let accounts = db.with_conn(|conn| GitHubAccountDao::list(conn))?;
+        let accounts = db.with_conn(GitHubAccountDao::list)?;
         Ok(accounts
             .into_iter()
             .find(|a| a.login.eq_ignore_ascii_case(owner)))
@@ -843,13 +843,14 @@ impl GitHubService {
                 }
             })?;
 
-        // v0.2.1 — süre dolmak üzereyse (2 dk tampon) yenilemeyi dene.
-        if Self::token_expiring_soon(account.token_expires_at.as_deref()) {
-            if let Some(fresh) = self.try_refresh_token(db, &account)? {
-                return Ok((account, fresh));
-            }
-            // refresh anahtarı yok: eski token'la devam (belki hâlâ geçerlidir;
-            // GitHub App'i süre ayarı kapatılmış olabilir).
+        // v0.2.1 — süre dolmak üzereyse (2 dk tampon) yenilemeyi dene; refresh
+        // anahtarı yoksa (None) eski token'la devam edilir — belki hâlâ
+        // geçerlidir (GitHub App'in süre ayarı kapatılmış olabilir).
+        if !Self::token_expiring_soon(account.token_expires_at.as_deref()) {
+            return Ok((account, token));
+        }
+        if let Some(fresh) = self.try_refresh_token(db, &account)? {
+            return Ok((account, fresh));
         }
 
         Ok((account, token))

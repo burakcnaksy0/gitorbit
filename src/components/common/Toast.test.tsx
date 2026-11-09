@@ -11,7 +11,10 @@ import { ToastProvider, useNotify } from "./Toast";
 const Probe: React.FC = () => {
   const notify = useNotify();
   return (
-    <button type="button" onClick={() => notify.success("Commit atıldı", "a1b2c3d · main")}>
+    <button
+      type="button"
+      onClick={() => notify.success("Commit atıldı", "a1b2c3d · main")}
+    >
       tetikle
     </button>
   );

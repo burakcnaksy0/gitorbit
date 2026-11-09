@@ -39,7 +39,8 @@ export function errorHint(err: unknown): string | undefined {
  */
 const FRIENDLY: Record<string, string> = {
   AUTH_REQUIRED: "Kimlik doğrulama gerekiyor. Lütfen tekrar bağlanın.",
-  AUTH_EXPIRED: "GitHub kimlik doğrulaması geçersiz. GitHub ekranından hesabınızı yeniden bağlayın.",
+  AUTH_EXPIRED:
+    "GitHub kimlik doğrulaması geçersiz. GitHub ekranından hesabınızı yeniden bağlayın.",
   RATE_LIMITED: "GitHub API istek sınırı aşıldı. Lütfen biraz bekleyip tekrar deneyin.",
   PERMISSION_DENIED: "Bu kaynak için izniniz yok veya kapsam yetersiz.",
   NOT_FOUND: "Kaynak bulunamadı veya erişim izniniz yok.",

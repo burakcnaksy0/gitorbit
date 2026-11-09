@@ -70,8 +70,12 @@ describe("ChangesView çakışma bandı (v0.2 madde 7)", () => {
     const band = await screen.findByRole("alert", { name: "Çakışma paneli" });
     expect(band).toHaveTextContent("2 dosyada çakışma var");
 
-    expect(screen.getByRole("button", { name: "src/app.ts için bizim tarafı seç" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "src/app.ts için onların tarafını seç" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "src/app.ts için bizim tarafı seç" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "src/app.ts için onların tarafını seç" })
+    ).toBeInTheDocument();
     // her çakışmalı dosya için birer buton
     expect(await screen.findAllByText("Çözüldü işaretle")).toHaveLength(2);
     expect(screen.getAllByText("Dosyayı Aç")).toHaveLength(2);
@@ -81,7 +85,9 @@ describe("ChangesView çakışma bandı (v0.2 madde 7)", () => {
     vi.mocked(tauriCommands.repositoryGetStatus).mockResolvedValue(statusWith({}));
     render(<ChangesView repoId="repo-1" />);
     await screen.findByText("Çalışma ağacı temiz");
-    expect(screen.queryByRole("alert", { name: "Çakışma paneli" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("alert", { name: "Çakışma paneli" })
+    ).not.toBeInTheDocument();
   });
 
   it("'← Bizim' resolve komutunu ours tarafıyla çağırır ve durumu yeniler", async () => {
@@ -118,7 +124,9 @@ describe("ChangesView çakışma bandı (v0.2 madde 7)", () => {
       conflicted_files: [],
     });
     vi.mocked(tauriCommands.repositoryResolveConflict).mockResolvedValue(allResolved);
-    vi.mocked(tauriCommands.repositoryContinueOperation).mockResolvedValue(statusWith({}));
+    vi.mocked(tauriCommands.repositoryContinueOperation).mockResolvedValue(
+      statusWith({})
+    );
 
     render(<ChangesView repoId="repo-1" />);
     fireEvent.click(
@@ -163,10 +171,12 @@ describe("ChangesView çakışma bandı (v0.2 madde 7)", () => {
   });
 
   it("'Çözüldü işaretle' dosyayı stage'ler (editörde elle çözüm akışı)", async () => {
-    vi.mocked(tauriCommands.repositoryStageFiles).mockResolvedValue(statusWith({
-      operation_state: "merge_in_progress",
-      conflicted_files: ["src/app.ts"],
-    }));
+    vi.mocked(tauriCommands.repositoryStageFiles).mockResolvedValue(
+      statusWith({
+        operation_state: "merge_in_progress",
+        conflicted_files: ["src/app.ts"],
+      })
+    );
 
     render(<ChangesView repoId="repo-1" />);
     await screen.findByRole("alert", { name: "Çakışma paneli" });
