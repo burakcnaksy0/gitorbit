@@ -3,6 +3,24 @@
 Biçim: [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/); sürümlemede
 SemVer. Sürüm notlarının ayrıntılı kaynakları `docs/RELEASE_NOTES_*.md`.
 
+## [0.2.2] — 2026-11-09
+
+### Eklendi
+
+- **Çapraz platform release kanalı (ADR-0005 tadilatı):** `v*` tag push'u artık
+  tek GitHub Release'e üç platformun paketini koyar — Linux AppImage + .deb,
+  macOS **universal** `.dmg` (Apple Silicon + Intel), Windows NSIS `.exe`.
+  Paketlerin tümü **imzasız kalmaya devam eder**; release gövdesi kurulum ve
+  ilk-açılış (Gatekeeper/SmartScreen) talimatlarını otomatik içerir
+  (`docs/release-footer.md`).
+
+### Düzeltildi
+
+- Release gövdesi artık güvenilir biçimde CHANGELOG dilimi + dipnottan
+  kurulur (v0.2.1'de tauri-action'a devredilince gövde commit mesajı olarak
+  kalmıştı); release oluşturma işi üç build job'ı toplayan ayrı bir job'a
+  taşındı.
+
 ## [0.2.1] — 2026-11-09
 
 ### Değişti

@@ -5,11 +5,12 @@
 > Yerel Git iş akışlarını ve GitHub hesap yönetimini, hiçbir verini dışarıda
 > bırakmadan tek pencerede toplayan, açık kaynaklı masaüstü uygulaması.
 >
-> **Durum:** v0.2.1 · **Lisans:** MIT · **Platformlar:** Linux (AppImage/.deb
-> hazır) · macOS · Windows (kaynaktan)
+> **Durum:** v0.2.2 · **Lisans:** MIT · **Platformlar:** Linux (AppImage/.deb)
+> · macOS (universal .dmg) · Windows (.exe) — macOS/Windows paketleri
+> **imzasız**; ilk açılış talimatları Release metninde
 >
 > **İndir:** [GitHub Releases](https://github.com/burakcnaksy0/gybe/releases)
-> — `Gybe_x.y.z_amd64.AppImage` indir, `chmod +x` yap, çalıştır.
+> — işletim sistemine uygun kurulumu al.
 
 Gybe bir "git GUI'si"nden fazlasını hedefler: çok depolu bir **çalışma
 alanı**. Depolarını tanımlarsın; Gybe arka planda uzaktan gelen
@@ -144,14 +145,14 @@ sürtünmeyi kaldırmaya çalışır.
 
 ## 🚫 Bilinçli Sınırlar (Yapmadıklarımız)
 
-| Yapılmıyor                                    | Neden                                                                                                                                                                               |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Etkileşimli rebase, cherry-pick UI'ı          | Yüksek yıkıcılık, terminalde çok daha güvenli kontrol                                                                                                                               |
-| Satır içi (3 panelli) merge editörü           | Karma içerik çözümü editörün işi; Gybe tarafa geçişi ve takibi verir                                                                                                                |
-| Otomatik `git push --force`, otomatik pull    | Kullanıcı onayı olmayan yıkıcı/istem dışı işlem ilkesi                                                                                                                              |
-| Depo grupları/etiket CRUD arayüzü             | Kapsam yönetimi; terminal serbest                                                                                                                                                   |
-| Bulut senkronizasyonu, iş birliği özellikleri | Yerel-ilk mimari; veri sahibi kullanıcı                                                                                                                                             |
-| İmzalı/notarize paketler                      | İmza/noter altyapısı yok; paketler **imzasız** yayınlandığı Release metninde açıkça yazar. Linux'ta neden AppImage+.deb, macOS/Windows'ta neden hiç paket olmadığı: `docs/adr/0005` |
+| Yapılmıyor                                    | Neden                                                                                                                                                                                                                                                                |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Etkileşimli rebase, cherry-pick UI'ı          | Yüksek yıkıcılık, terminalde çok daha güvenli kontrol                                                                                                                                                                                                                |
+| Satır içi (3 panelli) merge editörü           | Karma içerik çözümü editörün işi; Gybe tarafa geçişi ve takibi verir                                                                                                                                                                                                 |
+| Otomatik `git push --force`, otomatik pull    | Kullanıcı onayı olmayan yıkıcı/istem dışı işlem ilkesi                                                                                                                                                                                                               |
+| Depo grupları/etiket CRUD arayüzü             | Kapsam yönetimi; terminal serbest                                                                                                                                                                                                                                    |
+| Bulut senkronizasyonu, iş birliği özellikleri | Yerel-ilk mimari; veri sahibi kullanıcı                                                                                                                                                                                                                              |
+| İmzalı/notarize paketler                      | İmza/noter altyapısı yok. Paketler üç platformda da yayınlanır ama **imzasız** — release metni tek seferlik Gatekeeper/SmartScreen uyarısının nasıl geçileceğini anlatır. Paralı imzaya (Developer ID / OV-EV sertifika) geçiş kararı `docs/adr/0005`'i yeniden açar |
 
 ---
 
@@ -338,31 +339,34 @@ Gybe/
 | **v0.1**    | Çekirdek                              | Depo kataloğu, status/diff/stage/commit, dal yönetimi, push/fetch/pull, Device Flow + keyring, geçmiş listesi, CI                                                                                                                                                                                                                   |
 | **v0.2**    | Günlük kullanım (12/12)               | ignore + stash, auto-fetch + OS bildirimi + kontrollü amend, komut paleti + sürükle-bırak, commit grafiği, çakışma bandı + tümünü-eşitle, pin + onboarding                                                                                                                                                                          |
 | **v0.2.1**  | Güvenlik tazeleme + denetim + dağıtım | Refresh-token ile şeffaf token yenileme; GO/CB/R kimlikli denetim bulgularının 9 iş paketinde kapatılması (perf, veri kaybı kapıları, yarış koşulları, CSP, worktree ignore, odak erişilebilirliği); tag tetiklikli Linux AppImage/.deb release kanalı                                                                              |
+| **v0.2.2**  | Çapraz platform dağıtım               | Aynı release artık imzasız **universal .dmg** (Apple Silicon + Intel) ve Windows **NSIS .exe** de içeriyor; her release gövdesine iki dilli ilk-açılış (Gatekeeper/SmartScreen) rehberi otomatik ekleniyor; release oluşturma `gh` üzerine yeniden kuruldu (gövde artık CHANGELOG dilimi)                                           |
 | **2026-11** | İsim değişikliği                      | Proje **GitOrbit → Gybe** olarak yeniden adlandırıldı (GitHub'daki aynı adlı açık kaynak Git istemcisiyle çakışma nedeniyle). Ürün ve kod tabanı aynıdır; keyring hizmet adı (`gitorbit→gybe`) ve veri dizini değiştiği için mevcut kurulumlarda GitHub hesabının bir kez yeniden bağlanması ve depoların bir kez eklenmesi gerekir |
 
 ---
 
 ## 📦 Dağıtım ve Lisans
 
-**Linux:** her sürüm [GitHub Releases](https://github.com/burakcnaksy0/gybe/releases)
-sayfasında **AppImage** ve **.deb** olarak yayınlanır:
+Her sürüm [GitHub Releases](https://github.com/burakcnaksy0/gybe/releases)
+sayfasında her platform için bir kurulumla yayınlanır:
 
-```bash
-# AppImage (dağıtımdan bağımsız):
-chmod +x Gybe_0.2.1_amd64.AppImage && ./Gybe_0.2.1_amd64.AppImage
-# veya Debian/Ubuntu:
-sudo apt install ./Gybe_0.2.1_amd64.deb
-```
+| Platform                | Dosya                | İlk açılış                                                                                              |
+| ----------------------- | -------------------- | ------------------------------------------------------------------------------------------------------- |
+| Linux (x86_64)          | `.AppImage` / `.deb` | Olduğu gibi çalışır: `chmod +x Gybe_*_amd64.AppImage && ./…` veya `sudo apt install ./Gybe_*_amd64.deb` |
+| macOS (Silicon + Intel) | `_universal.dmg`     | **İmzasız** → uygulamaya sağ tık → **Aç** (bir seferlik)                                                |
+| Windows (x64)           | `_x64-setup.exe`     | **İmzasız** → SmartScreen → **"Daha fazla bilgi" → "Yine de çalıştır"** (bir seferlik)                  |
 
-AppImage GTK/WebKit kütüphanelerini paketlemez; aşağıdaki sistem paketleri
-gerekir (bkz. Kurulum): `libwebkit2gtk-4.1`, `libdbus-1`, `libayatana-appindicator3`.
+AppImage GTK/WebKit kütüphanelerini paketlemez; bu kütüphaneler hedef
+makinede gerekir (bkz. Kurulum): `libwebkit2gtk-4.1`, `libdbus-1`,
+`libayatana-appindicator3`.
 
-**Dürüst notlar (bkz. `docs/adr/0005`):** Paketler **imzasızdır** — GPG imzası
-ve Apple notarization yoktur; Release metninde de böyle yazar. macOS/Windows
-için imza/noter hikâyesi netleşene kadar paket yayınlanmaz, bu platformlarda
-yalnızca CI derleme doğrulaması yapılır; kaynaktan derleme her platformda
-mümkündür. Otomatik güncelleyici yoktur — güncellemeyi Release sayfasından
-indirisin.
+**Dürüst notlar (bkz. `docs/adr/0005`):** Paketlerin tümü **imzasızdır** — GPG
+imzası, Apple notarization veya Windows code-signing sertifikası yoktur ve
+release metni bunu baştan söyler (yukarıdaki tablo her release gövdesine
+otomatik eklenir). Hiç paket yayınlamamaktansa imzasız yayınlamayı seçtik ve
+tek seferlik hangi uyarıyı geçeceğini açıkça yazıyoruz; "ben doğrulamak
+isterim" dersen kaynaktan derleme (`npm ci && npm run tauri build`) her
+platformda mümkün. Otomatik güncelleyici yoktur — güncellemeyi Release
+sayfasından indirirsin.
 
 Sürüm geçmişi: `CHANGELOG.md` · paketleme kararları: `docs/adr/0004`,
 `docs/adr/0005` · yayın süreci: `.github/workflows/release.yml`

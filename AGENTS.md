@@ -44,10 +44,14 @@ Bu dosya depoda uygulanan işleyişi tanımlar. Yeni bir iş paketine başlamada
 - `CHANGELOG.md`'e `## [X.Y.Z]` başlığıyla (birebir bu biçimde — release
   workflow'u bu başlıktan dilimler) kullanıcıya dönük not eklenir.
 - Yayın tetiği **tag push**: `git tag vX.Y.Z && git push origin vX.Y.Z` →
-  `release.yml` Linux AppImage + .deb üretip GitHub Release'e koyar. Tag'i her
+  `release.yml` üç platformda derler (Linux AppImage+.deb, macOS universal
+  `.dmg`, Windows NSIS `.exe`) ve tek GitHub Release'e koyar. Tag'i her
   zaman kullanıcı atar (push kuralımız geçerli).
-- Release sadece Linux artefact yayınlar; macOS/Windows'ta paket yayınlamak
-  imza/noter kararı gerektirir (ADR-0005'i yeniden açmadan paket eklenmez).
+- Paketler üç platformda da **imzasızdır**; kurulum ve ilk-açılış
+  (Gatekeeper/SmartScreen) talimatları `docs/release-footer.md`'de durur ve
+  release gövdesine otomatik eklenir. Ücrete dayalı imza/noter altyapısı
+  (Developer ID, OV/EV sertifika) eklemek ADR-0005'in tadilat bölümünü
+  yeniden açmayı gerektirir.
 
 ## Teknik notlar (maziden dersler)
 

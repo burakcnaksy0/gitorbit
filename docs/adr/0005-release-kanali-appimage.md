@@ -1,6 +1,7 @@
 # ADR-0005 — Release Kanalı: Linux AppImage + .deb, İmzasız, GitHub Release
 
-- **Durum:** Kabul edildi
+- **Durum:** Kabul edildi — **2026-11-09 tadilatı ile üç platforma genişletildi**
+  (aşağıdaki "Tadilat" bölümü; mac/Windows için hâlâ imzasız)
 - **Tarih:** 2026-11-09
 - **İlgili:** ADR-0004 (bu ADR onun "Takip (v0.2)" maddesini sonuçlandırır); Spec v1.1 §11.2 (dürüstlük ilkesi)
 
@@ -60,3 +61,37 @@ varmış gibi duramaz.
   Release notlarında açıkça belirtilir.
 - Takip (v0.3+): macOS Developer ID + notarization (paralı Apple Developer
   hesabı gerektirir), GPG checksum imzası, flatpak paketi değerlendirilecek.
+
+---
+
+## Tadilat — 2026-11-09: İmzasız macOS + Windows kanalı (v0.2.2+)
+
+**Değişen:** v0.2.1 Linux-only olarak yayınlandıktan sonra proje sahibi,
+Release sayfasının üç platformu da göstermesini istedi; "Seçenek 3 reddi"
+**seçenekli bir tercih olmaktan çıktı**: imzasız `.dmg` ve NSIS `.exe` de
+yayınlanacak, bedeli kullanıcıya gizlenmeden.
+
+**Gerekçe:** Seçenek 3'ü reddetme gerekçemiz "kullanıcıyı sebepsiz güvenlik
+duvarıyla karşılamak"tı; çözüm paketleri kaldırmak değil, **uyarı ekranını
+önden anlatmak** olursa aynı dürüstlük ilkesi yayın yönünde de çalışır.
+Release gövdesine `docs/release-footer.md` eklenir: macOS'ta sağ tık → Aç,
+Windows'ta "Daha fazla bilgi → Yine de çalıştır" adımları, neden imzasız
+olduğu ve "güvenmiyorsan kaynaktan derle" seçeneği orada yazar. GitHub her
+asset'in SHA-256'sını zaten gösterir.
+
+**Kapsam:**
+
+- macOS: **universal** `.dmg` (aarch64 + x86_64 tek dosya) — imzasız,
+  notarization yok. Gatekeeper yalnızca ilk açılışta engeller; ADR'nin
+  eski "sistematik engellenir" iddiası pratikte tek seferlik sağ-tık-→-Aç
+  ile aşılabiliyor (isolation önbelleği senaryosu hâlâ mümkün → dipnotta).
+- Windows: NSIS `.exe` (x64) — imzasız; SmartScreen tek seferlik uyarır.
+- Linux: değişmez (AppImage + .deb).
+- Release'i artık üç build job'ın artefact'larını toplayan ayrı bir job
+  `gh release create` ile kurar (v0.2.1'de tauri-action gövdeyi commit
+  mesajı bırakmıştı — düzeltme CHANGELOG dilimi + footer).
+
+**Eski red gerekçesinin geçerli kalan kısmı:** paralı imza/noter altyapısına
+(Seçenek: Developer ID, OV/EV sertifika) yatırım kararı **hâlâ alınmadı**;
+bu tadilat onu iptal etmez, "imzasız yayın + şeffaf talimat" ara çözümünü
+ekler. Auto-update yasağı aynen durur.

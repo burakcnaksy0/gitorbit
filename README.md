@@ -6,11 +6,12 @@
 > account management into a single window — without your data ever leaving
 > the machine.
 >
-> **Status:** v0.2.1 · **License:** MIT · **Platforms:** Linux (AppImage/.deb
-> ready) · macOS · Windows (build from source)
+> **Status:** v0.2.2 · **License:** MIT · **Platforms:** Linux (AppImage/.deb)
+> · macOS (universal .dmg) · Windows (.exe) — macOS/Windows packages are
+> unsigned; first-launch instructions ship in the release text
 >
 > **Download:** [GitHub Releases](https://github.com/burakcnaksy0/gybe/releases)
-> — grab `Gybe_x.y.z_amd64.AppImage`, `chmod +x`, run.
+> — grab the installer for your OS.
 
 Gybe aims to be more than "another Git GUI": it's a multi-repo **workspace**.
 You register your repositories; Gybe watches remotes in the background and
@@ -152,14 +153,14 @@ replace it, it tries to remove the friction.
 
 ## 🚫 Deliberate Limits (What We Don't Do)
 
-| Not doing                               | Why                                                                                                                                                             |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Interactive rebase, cherry-pick UI      | High destructiveness; far safer control in the terminal                                                                                                         |
-| Inline (3-pane) merge editor            | Resolving complex content is the editor's job; Gybe gives you side-switching and tracking                                                                       |
-| Automatic `git push --force`, auto-pull | No destructive/unrequested operation without explicit user consent                                                                                              |
-| Repo groups/labels CRUD UI              | Scope management; the terminal stays free                                                                                                                       |
-| Cloud sync, collaboration features      | Local-first architecture; you own your data                                                                                                                     |
-| Signed/notarized packages               | No signing/notary infrastructure; releases explicitly state packages are **unsigned**. Why AppImage+.deb on Linux and nothing on macOS/Windows: `docs/adr/0005` |
+| Not doing                               | Why                                                                                                                                                                                                                                            |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Interactive rebase, cherry-pick UI      | High destructiveness; far safer control in the terminal                                                                                                                                                                                        |
+| Inline (3-pane) merge editor            | Resolving complex content is the editor's job; Gybe gives you side-switching and tracking                                                                                                                                                      |
+| Automatic `git push --force`, auto-pull | No destructive/unrequested operation without explicit user consent                                                                                                                                                                             |
+| Repo groups/labels CRUD UI              | Scope management; the terminal stays free                                                                                                                                                                                                      |
+| Cloud sync, collaboration features      | Local-first architecture; you own your data                                                                                                                                                                                                    |
+| Signed/notarized packages               | No signing/notary infrastructure. Packages ship on all three platforms but **unsigned** — the release text walks you through the one-time Gatekeeper/SmartScreen prompt. Paid signing (Developer ID / OV-EV cert) would reopen `docs/adr/0005` |
 
 ---
 
@@ -341,38 +342,39 @@ Gybe/
 
 ## 🕘 Version Summary
 
-| Version     | Theme                           | Summary                                                                                                                                                                                                                                                       |
-| ----------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **v0.1**    | Core                            | Repo catalog, status/diff/stage/commit, branch management, push/fetch/pull, Device Flow + keyring, history list, CI                                                                                                                                           |
-| **v0.2**    | Daily use (12/12)               | ignore + stash, auto-fetch + OS notifications + controlled amend, command palette + drag-and-drop, commit graph, conflict band + sync-all, pin + onboarding                                                                                                   |
-| **v0.2.1**  | Security + audit + distribution | Transparent token refresh via refresh token; all audit findings (GO/CB/R) closed in 9 work packages (perf, data-loss gates, races, CSP, worktree ignore, focus a11y); tag-triggered Linux AppImage/.deb release channel                                       |
-| **2026-11** | Rename                          | Project renamed **GitOrbit → Gybe** (name collision with an existing open-source Git client of the same name). Same product and codebase; the keyring service name and data dir changed, so existing installs need a one-time GitHub re-login and repo re-add |
+| Version     | Theme                           | Summary                                                                                                                                                                                                                                                                                                        |
+| ----------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **v0.1**    | Core                            | Repo catalog, status/diff/stage/commit, branch management, push/fetch/pull, Device Flow + keyring, history list, CI                                                                                                                                                                                            |
+| **v0.2**    | Daily use (12/12)               | ignore + stash, auto-fetch + OS notifications + controlled amend, command palette + drag-and-drop, commit graph, conflict band + sync-all, pin + onboarding                                                                                                                                                    |
+| **v0.2.1**  | Security + audit + distribution | Transparent token refresh via refresh token; all audit findings (GO/CB/R) closed in 9 work packages (perf, data-loss gates, races, CSP, worktree ignore, focus a11y); tag-triggered Linux AppImage/.deb release channel                                                                                        |
+| **v0.2.2**  | Cross-platform distribution     | Same release now also ships an unsigned **universal .dmg** (Apple Silicon + Intel) and a Windows **NSIS .exe**; bilingual first-launch guide (Gatekeeper/SmartScreen) appended to every release body; release creation rebuilt on `gh` so the body is the CHANGELOG slice (v0.2.1's showed the commit message) |
+| **2026-11** | Rename                          | Project renamed **GitOrbit → Gybe** (name collision with an existing open-source Git client of the same name). Same product and codebase; the keyring service name and data dir changed, so existing installs need a one-time GitHub re-login and repo re-add                                                  |
 
 ---
 
 ## 📦 Distribution & License
 
-**Linux:** every release is published on
-[GitHub Releases](https://github.com/burakcnaksy0/gybe/releases) as an
-**AppImage** and a **.deb**:
+Every release is published on
+[GitHub Releases](https://github.com/burakcnaksy0/gybe/releases) with one
+installer per platform:
 
-```bash
-# AppImage (distro-agnostic):
-chmod +x Gybe_0.2.1_amd64.AppImage && ./Gybe_0.2.1_amd64.AppImage
-# or Debian/Ubuntu:
-sudo apt install ./Gybe_0.2.1_amd64.deb
-```
+| Platform                | File                 | First launch                                                                                  |
+| ----------------------- | -------------------- | --------------------------------------------------------------------------------------------- |
+| Linux (x86_64)          | `.AppImage` / `.deb` | Works as-is: `chmod +x Gybe_*_amd64.AppImage && ./…` or `sudo apt install ./Gybe_*_amd64.deb` |
+| macOS (Silicon + Intel) | `_universal.dmg`     | **Unsigned** → right-click the app → **Open** (one time)                                      |
+| Windows (x64)           | `_x64-setup.exe`     | **Unsigned** → SmartScreen → **"More info" → "Run anyway"** (one time)                        |
 
 The AppImage does not bundle GTK/WebKit libraries; the system packages above
 are still required (see Getting started): `libwebkit2gtk-4.1`, `libdbus-1`,
 `libayatana-appindicator3`.
 
-**Honest notes (see `docs/adr/0005`):** packages are **unsigned** — there is
-no GPG signing or Apple notarization, and the release text says so. Until a
-signing/notary story exists, no packages are published for macOS/Windows
-(CI verifies builds on those platforms only); building from source works
-everywhere. There is no auto-updater — you download updates from the Releases
-page.
+**Honest notes (see `docs/adr/0005`):** all packages are **unsigned** — there
+is no GPG signing, Apple notarization, or Windows code-signing certificate,
+and the release text says so up front (the table above is auto-appended to
+every release). We publish unsigned installers rather than nothing, and we
+tell you exactly which one-time warning to click past; building from source
+(`npm ci && npm run tauri build`) works everywhere if you'd rather verify.
+There is no auto-updater — you download updates from the Releases page.
 
 Release history: `CHANGELOG.md` · packaging decisions: `docs/adr/0004`,
 `docs/adr/0005` · publishing pipeline: `.github/workflows/release.yml`
