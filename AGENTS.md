@@ -13,10 +13,11 @@ Bu dosya depoda uygulanan işleyişi tanımlar. Yeni bir iş paketine başlamada
    - `npx tsc --noEmit` + `npx vitest run` + `npm run build`
      Rust'a dokunulmayan bir pakette Rust kapıları son bilinen haliyle
      geçerlidir; yine de şüphe varsa koştır.
-3. **README her işten sonra güncellenir.** Yetenek haritası, "bilinçli
-   sınırlar", kalite kapısı sayıları ve sürüm özeti tablosu güncel durumu
-   yansıtmalıdır. Test sayıları ve iddialar **doğrulanmış** olmalı — olmayan
-   özellik README'ye yazılmaz.
+3. **README'ler her işten sonra güncellenir.** `README.md` (İngilizce) ve
+   `README.tr.md` birlikte: yetenek haritası, "bilinçli sınırlar", kalite
+   kapısı sayıları ve sürüm özeti tablosu güncel durumu yansıtmalıdır; UI
+   davranışı değiştiyse `docs/screenshots/` da yenilenir. Test sayıları ve
+   iddialar **doğrulanmış** olmalı — olmayan özellik README'ye yazılmaz.
 4. **Test borcu ödenir.** Davranış değiştiren her düzeltme hedefli bir
    regresyon testiyle gelir (bulgu kimliğiyle: GO-xx / CB-xx / R-xx).
 5. **Doğrulanmamış varsayım yok.** Biçim/sürüm varsayımı yapma; gerçek

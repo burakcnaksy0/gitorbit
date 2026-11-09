@@ -22,6 +22,9 @@ SemVer. Sürüm notlarının ayrıntılı kaynakları `docs/RELEASE_NOTES_*.md`.
 - **Release kanalı (ADR-0005):** `v*` tag push'u Linux **AppImage + .deb**
   üretip GitHub Release'e yükler (imzasız — README/ADR'de açıkça belirtilir).
   macOS/Windows için CI derleme doğrulaması sürer.
+- **İngilizce README:** `README.md` İngilizce ana dosya oldu, orijinal Türkçe
+  metin `README.tr.md`'ye taşındı; `docs/screenshots/` altında demo vereli
+  ekran görüntüleri galerisi.
 
 ### Düzeltildi / İyileştirildi (uçtan uca denetim — WP-0…WP-8)
 
