@@ -1,6 +1,6 @@
 [package]
 name = "gybe"
-version = "0.1.0"
+version = "0.2.1"
 description = "Gybe — Modern Git & GitHub Developer Workspace"
 authors = ["Gybe Contributors"]
 edition = "2024"

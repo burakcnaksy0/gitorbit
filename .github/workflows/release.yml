@@ -1,0 +1,72 @@
+name: Gybe Release
+
+# v* tag push'unda Linux artefact'larını üretir ve GitHub Release'e yükler.
+# Kapsam ve gerekçe (neden Linux-only, neden imzasız): docs/adr/0005
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-linux:
+    name: Linux Release (AppImage + .deb)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libdbus-1-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            pkg-config \
+            patchelf
+          # AppImage paketlemesi (linuxdeploy) FUSE ister; ubuntu-24.04
+          # runner'larında paket adı t64 takısıyla geldiği için ikisini de dene.
+          sudo apt-get install -y libfuse2 || sudo apt-get install -y libfuse2t64
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Extract release notes section
+        run: |
+          # Release gövdesi = CHANGELOG'daki bu sürümün bölümü (## [x.y.z] ile
+          # bir sonraki ## arasına kadar) + sabit imzasızlık notu.
+          VER="${GITHUB_REF_NAME#v}"
+          {
+            awk -v head="## [$VER]" '
+              index($0, head) == 1 { grab=1; next }
+              grab && /^## / { exit }
+              grab { print }
+            ' CHANGELOG.md
+            printf '\n---\n\n**Not:** Paketler imzasızdır (GPG/Apple notary yok —\nbkz. docs/adr/0005). macOS ve Windows için şimdilik kaynaktan derleyin;\nCI bu platformlarda derlemeyi doğruluyor.\n'
+          } > RELEASE_BODY.md
+          test -s RELEASE_BODY.md
+
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Gybe ${{ github.ref_name }}"
+          releaseBodyPath: RELEASE_BODY.md
+          releaseDraft: false
+          prerelease: false
+          args: --bundles appimage,deb

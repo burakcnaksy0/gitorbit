@@ -1,6 +1,6 @@
 # ADR-0004 — v0.1.0 Dağıtım Biçimi: Bundle'sız Çalıştırılabilir Binary
 
-- **Durum:** Kabul edildi (v0.2'de yeniden değerlendirilecek)
+- **Durum:** Kabul edildi — ADR-0005 ile kısmen yürürlükten kaldırıldı (v0.2.1+)
 - **Tarih:** 2026-11-06
 - **İlgili gereksinimler:** Spec v1.1 §11.1, §16.3; PRD §19.2
 

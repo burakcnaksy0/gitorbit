@@ -11,8 +11,8 @@ Bu dosya depoda uygulanan işleyişi tanımlar. Yeni bir iş paketine başlamada
    - `cargo test --manifest-path crates/gybe-core/Cargo.toml --features test-support`
    - `cargo fmt` + `cargo check` + `cargo test` (`src-tauri/`)
    - `npx tsc --noEmit` + `npx vitest run` + `npm run build`
-   Rust'a dokunulmayan bir pakette Rust kapıları son bilinen haliyle
-   geçerlidir; yine de şüphe varsa koştır.
+     Rust'a dokunulmayan bir pakette Rust kapıları son bilinen haliyle
+     geçerlidir; yine de şüphe varsa koştır.
 3. **README her işten sonra güncellenir.** Yetenek haritası, "bilinçli
    sınırlar", kalite kapısı sayıları ve sürüm özeti tablosu güncel durumu
    yansıtmalıdır. Test sayıları ve iddialar **doğrulanmış** olmalı — olmayan
@@ -33,6 +33,20 @@ Bu dosya depoda uygulanan işleyişi tanımlar. Yeni bir iş paketine başlamada
   (tek gösterim noktası `src/lib/errors.ts`).
 - Commit mesajları/girdi yolları doğrulanır; ANSI/kontrol karakteri ve yol
   geçidi girişimleri reddedilir.
+
+## Sürüm yayınlama (v0.2.1+, bkz. docs/adr/0005)
+
+- Sürüm **beş yerde** tutulur ve birlikte değişir: `package.json` +
+  `package-lock.json` (`npm version X --no-git-tag-version` ikisini birden
+  yapar), `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`,
+  `crates/gybe-core/Cargo.toml`. Cargo.lock'lar `cargo metadata` ile tazelenir.
+- `CHANGELOG.md`'e `## [X.Y.Z]` başlığıyla (birebir bu biçimde — release
+  workflow'u bu başlıktan dilimler) kullanıcıya dönük not eklenir.
+- Yayın tetiği **tag push**: `git tag vX.Y.Z && git push origin vX.Y.Z` →
+  `release.yml` Linux AppImage + .deb üretip GitHub Release'e koyar. Tag'i her
+  zaman kullanıcı atar (push kuralımız geçerli).
+- Release sadece Linux artefact yayınlar; macOS/Windows'ta paket yayınlamak
+  imza/noter kararı gerektirir (ADR-0005'i yeniden açmadan paket eklenmez).
 
 ## Teknik notlar (maziden dersler)
 

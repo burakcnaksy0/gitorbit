@@ -3,8 +3,11 @@
 > Yerel Git iş akışlarını ve GitHub hesap yönetimini, hiçbir verini dışarıda
 > bırakmadan tek pencerede toplayan, açık kaynaklı masaüstü uygulaması.
 >
-> **Durum:** v0.2.1 + güvenlik/performans denetimi sertleştirmesi · **Lisans:** MIT ·
-> **Platformlar:** Linux · macOS · Windows
+> **Durum:** v0.2.1 · **Lisans:** MIT · **Platformlar:** Linux (AppImage/.deb
+> hazır) · macOS · Windows (kaynaktan)
+>
+> **İndir:** [GitHub Releases](https://github.com/burakcnaksy0/gybe/releases)
+> — `Gybe_x.y.z_amd64.AppImage` indir, `chmod +x` yap, çalıştır.
 
 Gybe bir "git GUI'si"nden fazlasını hedefler: çok depolu bir **çalışma
 alanı**. Depolarını tanımlarsın; Gybe arka planda uzaktan gelen
@@ -24,6 +27,7 @@ görsel bir uzantısıdır; sihirli bir paralel dünya değil.
 ## 🗺️ Neler Yapıyor? (Özellik Haritası)
 
 ### Genel Bakış ve Depolar
+
 - **Çok depolu katalog:** SQLite tabanlı depo dizini; klasör sürükle-bırak ile
   ekleme, eksik klasör tespiti (relink), yol çakışması kontrolü.
 - **Sabitleme (pin) + arama/filtre:** Sabitlenen depo listenin en üstünde;
@@ -34,6 +38,7 @@ görsel bir uzantısıdır; sihirli bir paralel dünya değil.
   depo aç → ilk işlem); gerçek hesaptan/depo listesinden okunan durum tikleri.
 
 ### Değişiklikler (Changes)
+
 - **Tek çağrılı status motoru:** `git status --porcelain=v2 --branch -z` —
   dosyalar, dal, upstream ve ahead/behind tek subprocess'te gelir; rename ve
   boşluklu yollar byte-ofsetli ayrıştırıcıyla birebir doğru.
@@ -55,6 +60,7 @@ görsel bir uzantısıdır; sihirli bir paralel dünya değil.
   onaylı "İptal Et".
 
 ### Geçmiş (History)
+
 - **Commit grafiği:** lane hesabı çekirdekte saf fonksiyon; merge/octopus
   kavşakları SVG şeritlerle, renkler SHA'dan türeyen kararlı palet.
 - **Dal/tag rozetleri**, tıklanabilir ebeveyn SHA'ları, sayfalı liste.
@@ -63,6 +69,7 @@ görsel bir uzantısıdır; sihirli bir paralel dünya değil.
   commit mesajı ANSI/kontrol karakteri kapısından geçer.
 
 ### Dallar (Branches)
+
 - Yerel/uzak dal hiyerarşisi, tek tık checkout/create/delete/merge,
   unmerged dal silmede zorlama ayrımı, abort/rebase durumunun dizin
   meta verisinden tespiti (stderr tahmini değil).
@@ -70,6 +77,7 @@ görsel bir uzantısıdır; sihirli bir paralel dünya değil.
   ne olduğunu ve seçeneklerini görür.
 
 ### GitHub
+
 - **OAuth Device Flow (RFC 8628):** tarayıcı + kod ile giriş, client secret
   yok; istemci tarafı hız sınırlama ve `slow_down` uyumu (±5 sn backoff).
 - **Otomatik token yenileme:** access token bitmeden 2 dk önce refresh grant
@@ -79,6 +87,7 @@ görsel bir uzantısıdır; sihirli bir paralel dünya değil.
   remote'un bağlanması ve klasörün depo olarak eklenmesi tek akışta.
 
 ### Uygulama Geneli
+
 - **Otomatik kontrol (auto-fetch):** 1–60 dk aralıkla tüm depolar fetch
   edilir; ↑/↓ rozetleri canlılanır. **Pull asla otomatik değildir.**
 - **Tümünü eşitle:** tüm depoları sırayla içe/dışa aktaran tur; ilerleme
@@ -101,17 +110,17 @@ görsel bir uzantısıdır; sihirli bir paralel dünya değil.
 (aşağıdaki "Bilinçli Sınırlar" tablosuna bak). İddiası şu: **yaptığı işi,
 kullanıcının verisine ve dikkatine saygı gösteren bir sıralamayla yapıyor.**
 
-| Boyut | Sektörde yaygın durum | Gybe |
-| --- | --- | --- |
-| **Kimlik bilgisi** | Token'lar genelde kendi vault'una/cloud hesabına, config'e ya da OS depolayıcısına "yardımcı" ile yazılır; birçok araç hesap açmayı şart koşar | Token ve refresh anahtarı **yalnızca işletim sistemi anahtarlığında**; işlemeye özel süreç ortamında (`GIT_ASKPASS` tüpü ile) yaşar; diske/URL'e/SQLite'a/log'a **asla** yazılmaz. OAuth App secret'ı mimari olarak yok |
-| **Hesap/telemetri** | Üretici hesabı (Atlassian/GitKraken vs.) ve uzaktan analitik yaygın | Kurulumdan ilk commit'e kadar hesap zorunluluğu yok; GitHub bağlantısı %100 isteğe bağlı; telemetri yok |
-| **Veri kaybı** | `--force`, `reset --hard`, "discard" tek tık ve sessiz sık karşılaşılan kısayollar | Non-fast-forward push'ta otomatik force **yok**; kirli worktree checkout'u engeller; discard/stash-drop/merge-abort çift onaylı; stash çakışmada korunur; amend yalnızca yerel commit'le sınırlı |
-| **Hata dürüstlüğü** | "Başarılı" yazıp kısmi kalan işlemler, yutulan `recovery_hint`'ler | Başarı yalnızca gerçek backend yanıtından gelir; hatalar kod + özgün açıklama + **kurtarma ipucu** ile tek merkezden (`lib/errors`) gösterilir; süresi dolmuş token "bilinmeyen hata" diye maskelenmez |
-| **Git'e yaklaşım** | Gömülü kütüphane (libgit2) ya da kabuk string birleştirme; köşeli vakalarda sessiz sapmalar | Sistem `git`'i, daima ayrı argüman listesi + NUL-ayraçlı makine çıktıları; beklenmeyen biçimde eski-yol fallback; process-group kill + pipe-drain + timeout'lu subprocess yönetimi |
-| **Worktree / alt modül** | `.git` dizini "dizindir" varsayımı sık kırılır | Linked worktree ve alt modüllerde `.git` bir **dosyadır**; git dizini her zaman `rev-parse --git-common-dir` ile çözülür (testli) |
-| **Performans profili** | Ağır Electron geçmişi; her panel ayrı subtree taraması | Tauri çekirdeği + tek status çağrısı, sınırlı diff okuma, bayat-yanıt yarış korumaları, IPC komutları olay döngüsü dışında |
-| **Denetim şeffaflığı** | Güvenlik iddiaları genelde pazarlama cümlesidir | Uçtan uca denetim (GO-xx çekirdek · CB-xx arayüz · R-xx risk kimlikli bulgular) → 9 iş paketinde kapatıldı; her bulgu hedefli regresyon testiyle kilitli (commit geçmişinde kimlikleriyle izlenebilir) |
-| **Dil** | TR çevirisi ya yok ya topluluk yaması | Arayüz Türkçe-first tasarlandı (hata metinleri dâhil) |
+| Boyut                    | Sektörde yaygın durum                                                                                                                          | Gybe                                                                                                                                                                                                                    |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Kimlik bilgisi**       | Token'lar genelde kendi vault'una/cloud hesabına, config'e ya da OS depolayıcısına "yardımcı" ile yazılır; birçok araç hesap açmayı şart koşar | Token ve refresh anahtarı **yalnızca işletim sistemi anahtarlığında**; işlemeye özel süreç ortamında (`GIT_ASKPASS` tüpü ile) yaşar; diske/URL'e/SQLite'a/log'a **asla** yazılmaz. OAuth App secret'ı mimari olarak yok |
+| **Hesap/telemetri**      | Üretici hesabı (Atlassian/GitKraken vs.) ve uzaktan analitik yaygın                                                                            | Kurulumdan ilk commit'e kadar hesap zorunluluğu yok; GitHub bağlantısı %100 isteğe bağlı; telemetri yok                                                                                                                 |
+| **Veri kaybı**           | `--force`, `reset --hard`, "discard" tek tık ve sessiz sık karşılaşılan kısayollar                                                             | Non-fast-forward push'ta otomatik force **yok**; kirli worktree checkout'u engeller; discard/stash-drop/merge-abort çift onaylı; stash çakışmada korunur; amend yalnızca yerel commit'le sınırlı                        |
+| **Hata dürüstlüğü**      | "Başarılı" yazıp kısmi kalan işlemler, yutulan `recovery_hint`'ler                                                                             | Başarı yalnızca gerçek backend yanıtından gelir; hatalar kod + özgün açıklama + **kurtarma ipucu** ile tek merkezden (`lib/errors`) gösterilir; süresi dolmuş token "bilinmeyen hata" diye maskelenmez                  |
+| **Git'e yaklaşım**       | Gömülü kütüphane (libgit2) ya da kabuk string birleştirme; köşeli vakalarda sessiz sapmalar                                                    | Sistem `git`'i, daima ayrı argüman listesi + NUL-ayraçlı makine çıktıları; beklenmeyen biçimde eski-yol fallback; process-group kill + pipe-drain + timeout'lu subprocess yönetimi                                      |
+| **Worktree / alt modül** | `.git` dizini "dizindir" varsayımı sık kırılır                                                                                                 | Linked worktree ve alt modüllerde `.git` bir **dosyadır**; git dizini her zaman `rev-parse --git-common-dir` ile çözülür (testli)                                                                                       |
+| **Performans profili**   | Ağır Electron geçmişi; her panel ayrı subtree taraması                                                                                         | Tauri çekirdeği + tek status çağrısı, sınırlı diff okuma, bayat-yanıt yarış korumaları, IPC komutları olay döngüsü dışında                                                                                              |
+| **Denetim şeffaflığı**   | Güvenlik iddiaları genelde pazarlama cümlesidir                                                                                                | Uçtan uca denetim (GO-xx çekirdek · CB-xx arayüz · R-xx risk kimlikli bulgular) → 9 iş paketinde kapatıldı; her bulgu hedefli regresyon testiyle kilitli (commit geçmişinde kimlikleriyle izlenebilir)                  |
+| **Dil**                  | TR çevirisi ya yok ya topluluk yaması                                                                                                          | Arayüz Türkçe-first tasarlandı (hata metinleri dâhil)                                                                                                                                                                   |
 
 Konumlandırma özeti: **GitHub Desktop**'un sadeliği + **Fork/Sourcetree**'nin
 çok depolu iş akışı + **GitButler**'ın günlük yaşam kalitesi — bunları
@@ -123,14 +132,14 @@ sürtünmeyi kaldırmaya çalışır.
 
 ## 🚫 Bilinçli Sınırlar (Yapmadıklarımız)
 
-| Yapılmıyor | Neden |
-| --- | --- |
-| Etkileşimli rebase, cherry-pick UI'ı | Yüksek yıkıcılık, terminalde çok daha güvenli kontrol |
-| Satır içi (3 panelli) merge editörü | Karma içerik çözümü editörün işi; Gybe tarafa geçişi ve takibi verir |
-| Otomatik `git push --force`, otomatik pull | Kullanıcı onayı olmayan yıkıcı/istem dışı işlem ilkesi |
-| Depo grupları/etiket CRUD arayüzü | Kapsam yönetimi; terminal serbest |
-| Bulut senkronizasyonu, iş birliği özellikleri | Yerel-ilk mimari; veri sahibi kullanıcı |
-| İmzalı/notarize paketler (şimdilik) | v0.1/v0.2 dağıtım kararı; bkz. `docs/adr/0004`, release checklist |
+| Yapılmıyor                                    | Neden                                                                                                                                                                               |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Etkileşimli rebase, cherry-pick UI'ı          | Yüksek yıkıcılık, terminalde çok daha güvenli kontrol                                                                                                                               |
+| Satır içi (3 panelli) merge editörü           | Karma içerik çözümü editörün işi; Gybe tarafa geçişi ve takibi verir                                                                                                                |
+| Otomatik `git push --force`, otomatik pull    | Kullanıcı onayı olmayan yıkıcı/istem dışı işlem ilkesi                                                                                                                              |
+| Depo grupları/etiket CRUD arayüzü             | Kapsam yönetimi; terminal serbest                                                                                                                                                   |
+| Bulut senkronizasyonu, iş birliği özellikleri | Yerel-ilk mimari; veri sahibi kullanıcı                                                                                                                                             |
+| İmzalı/notarize paketler                      | İmza/noter altyapısı yok; paketler **imzasız** yayınlandığı Release metninde açıkça yazar. Linux'ta neden AppImage+.deb, macOS/Windows'ta neden hiç paket olmadığı: `docs/adr/0005` |
 
 ---
 
@@ -161,11 +170,11 @@ sürtünmeyi kaldırmaya çalışır.
 
 **Veri nereye yazılır?**
 
-| Veri | Konum | Not |
-| --- | --- | --- |
-| Depo kataloğu, son açılan, pin | SQLite (`app_data`) | WAL + `busy_timeout`; token **içermez** |
-| OAuth access + refresh token | **Yalnızca OS keyring** | Bitiş zamanı DB'de; anahtarın kendisi asla |
-| Uygulama durumu | SQLite | Korelasyon kimlikli loglama hassas veriyi maskeleyerek yazar |
+| Veri                           | Konum                   | Not                                                          |
+| ------------------------------ | ----------------------- | ------------------------------------------------------------ |
+| Depo kataloğu, son açılan, pin | SQLite (`app_data`)     | WAL + `busy_timeout`; token **içermez**                      |
+| OAuth access + refresh token   | **Yalnızca OS keyring** | Bitiş zamanı DB'de; anahtarın kendisi asla                   |
+| Uygulama durumu                | SQLite                  | Korelasyon kimlikli loglama hassas veriyi maskeleyerek yazar |
 
 **Yarış koşullarıyla mücadele (testli):** IPC başına seq-guard'lı bayat yanıt
 filtreleri, eşzamanlı refresh'i engelleyen `refresh_lock`, poizon-mutex
@@ -190,8 +199,8 @@ kurtarması, auto-fetch tur üst üste binme koruması.
    doğrulanır (`..`, mutlak yol, kontrol karakteri, ANSI kaçışı reddi);
    commit mesajları kontrol karakteri kapısından geçer.
 6. **Süreç hijyeni.** Her Git subprocess'i zaman aşımı + process-group kill
-   + pipe-drain ile yürür; kimlik soran Git asla askıda kalmaz
-   (`GIT_ASKPASS=echo`).
+   - pipe-drain ile yürür; kimlik soran Git asla askıda kalmaz
+     (`GIT_ASKPASS=echo`).
 7. **Güvenli varsayılan CSP.** `connect-src` yalnızca IPC; üretim
    politikasında dev sunucu istisnaları yok.
 
@@ -203,14 +212,14 @@ Detaylar ve bildirim politikası: `SECURITY.md`, `docs/adr/0002-os-credential-st
 
 Şu anki yeşil durum (bu depoda doğrulanmış sayılar):
 
-| Kapı | Komut | Durum |
-| --- | --- | --- |
-| Rust çekirdek (birim + kabul) | `cargo test --manifest-path crates/gybe-core/Cargo.toml --features test-support` | **111 test** |
-| Tauri kabuk | `cargo test` (`src-tauri/`) | 3 test |
-| Frontend birim/bileşen/a11y | `npm test` (Vitest) | **130 test / 26 dosya** |
-| Tip denetimi | `npm run typecheck` | temiz |
-| Üretim derlemesi | `npm run build` | temiz |
-| Biçim + lint | `npm run format:check` · `npm run lint` · `cargo fmt --check` · `clippy -D warnings` | temiz |
+| Kapı                          | Komut                                                                                | Durum                   |
+| ----------------------------- | ------------------------------------------------------------------------------------ | ----------------------- |
+| Rust çekirdek (birim + kabul) | `cargo test --manifest-path crates/gybe-core/Cargo.toml --features test-support`     | **111 test**            |
+| Tauri kabuk                   | `cargo test` (`src-tauri/`)                                                          | 3 test                  |
+| Frontend birim/bileşen/a11y   | `npm test` (Vitest)                                                                  | **129 test / 26 dosya** |
+| Tip denetimi                  | `npm run typecheck`                                                                  | temiz                   |
+| Üretim derlemesi              | `npm run build`                                                                      | temiz                   |
+| Biçim + lint                  | `npm run format:check` · `npm run lint` · `cargo fmt --check` · `clippy -D warnings` | temiz                   |
 
 Testler yalnız "çalışıyor" demez; davranış sözleşmesi taşır — örneğin: v2
 status ayrıştırıcısında boşluklu/rename yollar, hunk gövdesindeki `--- `
@@ -228,6 +237,7 @@ testiyle kapatıldı (commit mesajlarında izlenebilir).
 ## 🛠️ Kurulum ve Geliştirme
 
 ### Ön koşullar
+
 - Node.js `v20+` (önerilen `v22 LTS`) ve npm `v10+`
 - Rust stable (`1.80+`)
 - Git CLI `2.23+` (önerilen `2.40+`; bkz. `docs/adr/0003-minimum-git-surumu.md`)
@@ -249,7 +259,7 @@ npm run tauri build    # üretim derlemesi
 ```
 
 > Geliştirme kısayolu: `tauri.conf.json` içindeki `build.additionalWatchFolders:
-> ["../crates"]` sayesinde `gybe-core` kodu değişince `tauri dev` kendini
+["../crates"]` sayesinde `gybe-core` kodu değişince `tauri dev` kendini
 > yeniden derler. (Anahtar adı bilinçli olarak eski/camelCase: kurulu
 > `@tauri-apps/cli` 2.12.4'ün şeması güncel kebab-case adını henüz tanımıyor;
 > `tauri-utils` 2.10 her iki adı da kabul ediyor.)
@@ -287,7 +297,7 @@ Gybe/
 │   ├── src/{git,db,services}/  #   + credential_store, sync planlayıcı
 │   └── tests/                  # Faz 2-7 kabul testleri + denetim regresyonları
 ├── docs/
-│   ├── adr/                    # ADR-0001 Device Flow · 0002 Keyring · 0003 Git sürümü · 0004 Paketleme
+│   ├── adr/                    # ADR-0001 Device Flow · 0002 Keyring · 0003 Git sürümü · 0004/0005 Paketleme+Release
 │   ├── Gybe_System_Design_PRD.md · Gybe_Engineering_Specification_v1.1.md
 │   ├── KULLANIM_v0.2.md        # v0.2 özelliklerinin kullanıcı rehberi
 │   ├── ROADMAP_v0.2_kullanim.md
@@ -307,21 +317,40 @@ Gybe/
 
 ## 🕘 Sürüm Özeti
 
-| Sürüm | Tema | Özet |
-| --- | --- | --- |
-| **v0.1** | Çekirdek | Depo kataloğu, status/diff/stage/commit, dal yönetimi, push/fetch/pull, Device Flow + keyring, geçmiş listesi, CI |
-| **v0.2** | Günlük kullanım (12/12) | ignore + stash, auto-fetch + OS bildirimi + kontrollü amend, komut paleti + sürükle-bırak, commit grafiği, çakışma bandı + tümünü-eşitle, pin + onboarding |
-| **v0.2.1** | Güvenlik tazeleme + denetim | Refresh-token ile şeffaf token yenileme; GO/CB/R kimlikli denetim bulgularının 9 iş paketinde kapatılması (perf, veri kaybı kapıları, yarış koşulları, CSP, worktree ignore, odak erişilebilirliği) |
-| **2026-11** | İsim değişikliği | Proje **GitOrbit → Gybe** olarak yeniden adlandırıldı (GitHub'daki aynı adlı açık kaynak Git istemcisiyle çakışma nedeniyle). Ürün ve kod tabanı aynıdır; keyring hizmet adı (`gitorbit→gybe`) ve veri dizini değiştiği için mevcut kurulumlarda GitHub hesabının bir kez yeniden bağlanması ve depoların bir kez eklenmesi gerekir |
+| Sürüm       | Tema                                  | Özet                                                                                                                                                                                                                                                                                                                                |
+| ----------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **v0.1**    | Çekirdek                              | Depo kataloğu, status/diff/stage/commit, dal yönetimi, push/fetch/pull, Device Flow + keyring, geçmiş listesi, CI                                                                                                                                                                                                                   |
+| **v0.2**    | Günlük kullanım (12/12)               | ignore + stash, auto-fetch + OS bildirimi + kontrollü amend, komut paleti + sürükle-bırak, commit grafiği, çakışma bandı + tümünü-eşitle, pin + onboarding                                                                                                                                                                          |
+| **v0.2.1**  | Güvenlik tazeleme + denetim + dağıtım | Refresh-token ile şeffaf token yenileme; GO/CB/R kimlikli denetim bulgularının 9 iş paketinde kapatılması (perf, veri kaybı kapıları, yarış koşulları, CSP, worktree ignore, odak erişilebilirliği); tag tetiklikli Linux AppImage/.deb release kanalı                                                                              |
+| **2026-11** | İsim değişikliği                      | Proje **GitOrbit → Gybe** olarak yeniden adlandırıldı (GitHub'daki aynı adlı açık kaynak Git istemcisiyle çakışma nedeniyle). Ürün ve kod tabanı aynıdır; keyring hizmet adı (`gitorbit→gybe`) ve veri dizini değiştiği için mevcut kurulumlarda GitHub hesabının bir kez yeniden bağlanması ve depoların bir kez eklenmesi gerekir |
 
 ---
 
 ## 📦 Dağıtım ve Lisans
 
-v0.1/v0.2, **bundlesız çalıştırılabilir** olarak dağıtılır
-(`npm run tauri build -- --no-bundle`); Linux paket biçimi kararı ve
-gerekçe: `docs/adr/0004-linux-paketleme-bicimi.md`. İmzalama/noter onaylı
-paket sonraki sürüm hedefidir ve imza olmadan dağıtıldığı açıkça belirtilir.
+**Linux:** her sürüm [GitHub Releases](https://github.com/burakcnaksy0/gybe/releases)
+sayfasında **AppImage** ve **.deb** olarak yayınlanır:
+
+```bash
+# AppImage (dağıtımdan bağımsız):
+chmod +x Gybe_0.2.1_amd64.AppImage && ./Gybe_0.2.1_amd64.AppImage
+# veya Debian/Ubuntu:
+sudo apt install ./Gybe_0.2.1_amd64.deb
+```
+
+AppImage GTK/WebKit kütüphanelerini paketlemez; aşağıdaki sistem paketleri
+gerekir (bkz. Kurulum): `libwebkit2gtk-4.1`, `libdbus-1`, `libayatana-appindicator3`.
+
+**Dürüst notlar (bkz. `docs/adr/0005`):** Paketler **imzasızdır** — GPG imzası
+ve Apple notarization yoktur; Release metninde de böyle yazar. macOS/Windows
+için imza/noter hikâyesi netleşene kadar paket yayınlanmaz, bu platformlarda
+yalnızca CI derleme doğrulaması yapılır; kaynaktan derleme her platformda
+mümkündür. Otomatik güncelleyici yoktur — güncellemeyi Release sayfasından
+indirisin.
+
+Sürüm geçmişi: `CHANGELOG.md` · paketleme kararları: `docs/adr/0004`,
+`docs/adr/0005` · yayın süreci: `.github/workflows/release.yml`
+(`v*` tag push → otomatik).
 
 MIT lisans · bağımlılık lisans uyumluluğu `docs/LICENSE_INVENTORY.md` ·
 güvenlik sorunları için `SECURITY.md`.
