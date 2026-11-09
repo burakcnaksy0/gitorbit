@@ -10,7 +10,7 @@
 > · macOS (universal .dmg) · Windows (.exe) — macOS/Windows packages are
 > unsigned; first-launch instructions ship in the release text
 >
-> **Download:** [GitHub Releases](https://github.com/burakcnaksy0/gybe/releases)
+> **Download:** [GitHub Releases](https://github.com/gybeio/gybe/releases)
 > — grab the installer for your OS.
 
 Gybe aims to be more than "another Git GUI": it's a multi-repo **workspace**.
@@ -289,9 +289,12 @@ npm run tauri build    # production build
 
 ### GitHub OAuth (optional)
 
-Local Git features need neither internet nor a GitHub account. If you want
-Device Flow, point it at your own OAuth app's `client_id` (per RFC 8628 the
-`client_id` is not a secret; **no secret is ever used**):
+Local Git features need neither internet nor a GitHub account. The default
+`client_id` points at the OAuth app registered under the
+[gybeio](https://github.com/gybeio) organization. If you want Device Flow
+through your own app (forks, org policy…), point it at your `client_id`
+instead (per RFC 8628 the `client_id` is not a secret; **no secret is ever
+used**):
 
 ```bash
 GYBE_GITHUB_CLIENT_ID=<CLIENT_ID> npm run tauri dev
@@ -355,7 +358,7 @@ Gybe/
 ## 📦 Distribution & License
 
 Every release is published on
-[GitHub Releases](https://github.com/burakcnaksy0/gybe/releases) with one
+[GitHub Releases](https://github.com/gybeio/gybe/releases) with one
 installer per platform:
 
 | Platform                | File                 | First launch                                                                                  |

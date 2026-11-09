@@ -34,3 +34,12 @@ Uygulama içi güvenlik önlemleri:
 - Eksi: Etkileşimli olmayan (CI/headless) ortamlarda login mümkün değildir — bu zaten desteklenen bir senaryo değildir.
 - Eksi: Kullanıcı kodu girişi iki adımlıdır; UI `user_code` ve doğrulama URL'sini belirgin göstererek bunu telafi eder.
 - Takip: Scope genişletme gereksinimi (ör. PR yönetimi, P1) yeni bir ADR ile değerlendirilmelidir.
+
+## Ek — 2026-11-09
+
+Metindeki `GITORBIT_GITHUB_CLIENT_ID` ortam değişkeni isim değişikliğiyle
+`GYBE_GITHUB_CLIENT_ID` oldu (ADR, tarihî kayıt olarak eski adla duruyor).
+Device Flow kararı değişmedi; yalnızca varsayılan OAuth App artık proje
+sahibinin kişisel hesabı yerine **gybeio organizasyonu** altına kayıtlı
+(client_id sır olmadığı için kod yorumunda + CHANGELOG'da notlu). Eski kişisel
+App, eski kurulumlar göç edene kadar silinmeyecek.

@@ -21,6 +21,17 @@ SemVer. Sürüm notlarının ayrıntılı kaynakları `docs/RELEASE_NOTES_*.md`.
   kalmıştı); release oluşturma işi üç build job'ı toplayan ayrı bir job'a
   taşındı.
 
+### Değişti
+
+- **Depo ve OAuth kimliği `gybeio` organizasyonuna taşındı:** depo adresi
+  `github.com/gybeio/gybe` (eski adres redirect ediyor); varsayılan
+  `client_id` artık organizasyon altındaki OAuth App'e ait. Refresh token'lar
+  client_id'ye bağlı olduğundan v0.2.1'den yükselten kurulumlar GitHub'ı **bir
+  kez yeniden bağlamak** zorundadır (yalnızca GitHub entegrasyonunu
+  kullanıyorsan; yerel Git özellikleri etkilenmez). Eski (kişisel hesap
+  altındaki) OAuth App, eski kurulumlar göç edene kadar yayından
+  kaldırılmayacak. `GYBE_GITHUB_CLIENT_ID` override'ı aynen geçerli.
+
 ## [0.2.1] — 2026-11-09
 
 ### Değişti

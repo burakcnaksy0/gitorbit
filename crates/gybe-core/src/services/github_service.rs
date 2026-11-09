@@ -37,11 +37,14 @@ use uuid::Uuid;
 // GitHub client_id configuration
 // OAuth App with Device Flow enabled (public client — no client secret).
 // Per RFC 8628 the client_id is NOT a secret and may ship in the binary.
+// Default app is registered under the gybeio organization (2026-11-09; the
+// previous app lived under the maintainer's personal account and stays
+// registered until v0.2.1 installs migrate).
 // Override at launch with GYBE_GITHUB_CLIENT_ID (e.g. for forks/custom
 // OAuth app registrations).
 // ---------------------------------------------------------------------------
 
-const DEFAULT_GITHUB_CLIENT_ID: &str = "Ov23liE5su3QknwkABnY";
+const DEFAULT_GITHUB_CLIENT_ID: &str = "Ov23li6fn2rpmnIIi80c";
 
 fn github_client_id() -> String {
     std::env::var("GYBE_GITHUB_CLIENT_ID").unwrap_or_else(|_| DEFAULT_GITHUB_CLIENT_ID.to_string())

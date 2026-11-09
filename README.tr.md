@@ -9,7 +9,7 @@
 > · macOS (universal .dmg) · Windows (.exe) — macOS/Windows paketleri
 > **imzasız**; ilk açılış talimatları Release metninde
 >
-> **İndir:** [GitHub Releases](https://github.com/burakcnaksy0/gybe/releases)
+> **İndir:** [GitHub Releases](https://github.com/gybeio/gybe/releases)
 > — işletim sistemine uygun kurulumu al.
 
 Gybe bir "git GUI'si"nden fazlasını hedefler: çok depolu bir **çalışma
@@ -279,7 +279,9 @@ npm run tauri build    # üretim derlemesi
 
 ### GitHub OAuth (isteğe bağlı)
 
-Yerel Git özellikleri internet ve GitHub hesabı gerektirmez. Device Flow
+Yerel Git özellikleri internet ve GitHub hesabı gerektirmez. Varsayılan
+`client_id`, [gybeio](https://github.com/gybeio) organizasyonu altına kayıtlı
+OAuth App'i gösterir. Device Flow
 kullanmak istersen kendi OAuth App'inin `client_id`'sını verebilirsin
 (RFC 8628 gereği `client_id` sır değildir; **secret kullanılmaz**):
 
@@ -346,7 +348,7 @@ Gybe/
 
 ## 📦 Dağıtım ve Lisans
 
-Her sürüm [GitHub Releases](https://github.com/burakcnaksy0/gybe/releases)
+Her sürüm [GitHub Releases](https://github.com/gybeio/gybe/releases)
 sayfasında her platform için bir kurulumla yayınlanır:
 
 | Platform                | Dosya                | İlk açılış                                                                                              |
