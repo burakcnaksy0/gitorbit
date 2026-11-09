@@ -1,7 +1,7 @@
 /**
- * GitOrbit — Tauri IPC type definitions (Phase 2 & 3)
+ * Gybe — Tauri IPC type definitions (Phase 2 & 3)
  *
- * These types mirror the Rust structs in gitorbit-core/src/models.rs
+ * These types mirror the Rust structs in gybe-core/src/models.rs
  * and the AppError in src-tauri/src/lib.rs.
  */
 

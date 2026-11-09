@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn rejects_non_empty_destination() {
         let dir = std::env::temp_dir().join(format!(
-            "gitorbit-clone-test-{}-{}",
+            "gybe-clone-test-{}-{}",
             std::process::id(),
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));

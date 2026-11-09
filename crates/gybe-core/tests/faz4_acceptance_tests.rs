@@ -10,8 +10,8 @@
 ///   - AC-7: Geçersiz branch adı ve mevcut branch adıyla oluşturma engelleme.
 ///   - AC-8: Unmerged branch için güvenli silme (-d) ve zorla silme (-D).
 ///   - AC-9: Boş depolarda ve çoklu commitlerde pagination desteği.
-use gitorbit_core::db::Database;
-use gitorbit_core::services::RepositoryService;
+use gybe_core::db::Database;
+use gybe_core::services::RepositoryService;
 use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
@@ -34,7 +34,7 @@ fn setup_repo_with_commit() -> (tempfile::TempDir, std::path::PathBuf) {
     let _ = Command::new("git")
         .arg("-C")
         .arg(&repo)
-        .args(["config", "user.email", "test@gitorbit.dev"])
+        .args(["config", "user.email", "test@gybe.dev"])
         .output();
 
     fs::write(repo.join("README.md"), "# Initial Commit\n").unwrap();
@@ -81,7 +81,7 @@ fn test_commit_creates_sha_and_updates_history_ac1() {
     assert_eq!(latest.sha, commit_res.commit_sha);
     assert_eq!(latest.message, "feat: add app.ts");
     assert_eq!(latest.author_name, "Test Runner");
-    assert_eq!(latest.author_email, "test@gitorbit.dev");
+    assert_eq!(latest.author_email, "test@gybe.dev");
 }
 
 // -------------------------------------------------------------------------
@@ -249,15 +249,15 @@ fn test_git_identity_guard_blocks_and_configures_ac5() {
         &db,
         &record.id,
         "Custom Engineer",
-        "engineer@gitorbit.dev",
+        "engineer@gybe.dev",
     )
     .unwrap();
     assert_eq!(set_res.name.as_deref(), Some("Custom Engineer"));
-    assert_eq!(set_res.email.as_deref(), Some("engineer@gitorbit.dev"));
+    assert_eq!(set_res.email.as_deref(), Some("engineer@gybe.dev"));
 
     let id_after = RepositoryService::get_git_identity(&db, &record.id).unwrap();
     assert_eq!(id_after.name.as_deref(), Some("Custom Engineer"));
-    assert_eq!(id_after.email.as_deref(), Some("engineer@gitorbit.dev"));
+    assert_eq!(id_after.email.as_deref(), Some("engineer@gybe.dev"));
 
     let commit_res = RepositoryService::commit(
         &db,

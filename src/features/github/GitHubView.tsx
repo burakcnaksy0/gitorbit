@@ -1,5 +1,5 @@
 /**
- * GitOrbit — GitHub Accounts View (Phase 6)
+ * Gybe — GitHub Accounts View (Phase 6)
  *
  * Features:
  * - Lists connected GitHub accounts (no token shown)

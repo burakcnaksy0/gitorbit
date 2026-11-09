@@ -1,8 +1,8 @@
 //! v0.2 konfor paketi entegrasyon testleri — ignore + stash akışları.
 
-use gitorbit_core::RepositoryOperationState;
-use gitorbit_core::db::Database;
-use gitorbit_core::services::RepositoryService;
+use gybe_core::RepositoryOperationState;
+use gybe_core::db::Database;
+use gybe_core::services::RepositoryService;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -347,7 +347,7 @@ fn history_returns_graph_rows_and_ref_decorations() {
     let id = register(&db, &repo);
 
     let history =
-        gitorbit_core::services::RepositoryService::get_history(&db, &id, None, 50, 0).unwrap();
+        gybe_core::services::RepositoryService::get_history(&db, &id, None, 50, 0).unwrap();
 
     // En yeni commit merge commit: 2 ebeveyn → grafikte ikinci serit acilmali.
     assert!(history.commits.len() >= 4);
@@ -410,16 +410,14 @@ fn resolve_conflict_rejects_wrong_state_and_paths() {
     let id = register(&db, &repo);
 
     // Cakisma ortasinda cakismali olmayan yol reddedilir.
-    let err =
-        gitorbit_core::services::RepositoryService::resolve_conflict(&db, &id, "README.md", true)
-            .unwrap_err();
+    let err = gybe_core::services::RepositoryService::resolve_conflict(&db, &id, "README.md", true)
+        .unwrap_err();
     assert_eq!(err.code, "NOT_CONFLICTED");
 
     // Girdi dogrulamasi: bayrak enjeksiyonu / mutlak yol / bos.
     for bad in ["", "-ours", "/etc/passwd", "../gizli"] {
         assert!(
-            gitorbit_core::services::RepositoryService::resolve_conflict(&db, &id, bad, true)
-                .is_err(),
+            gybe_core::services::RepositoryService::resolve_conflict(&db, &id, bad, true).is_err(),
             "reddedilmeliydi: {bad:?}"
         );
     }
@@ -446,13 +444,9 @@ fn resolve_conflict_full_flow_ours_theirs_continue() {
     );
 
     // "Bizim" taraf secilip stage'lenir.
-    let status = gitorbit_core::services::RepositoryService::resolve_conflict(
-        &db,
-        &id,
-        "conflict.txt",
-        true,
-    )
-    .unwrap();
+    let status =
+        gybe_core::services::RepositoryService::resolve_conflict(&db, &id, "conflict.txt", true)
+            .unwrap();
     assert!(
         status.conflicted_files.is_empty(),
         "cozum sonrasi cakismali dosya kalmamali: {:?}",
@@ -477,13 +471,9 @@ fn resolve_conflict_full_flow_ours_theirs_continue() {
     );
 
     // Normal duruma donuldugu icin artik resolve reddedilir.
-    let err = gitorbit_core::services::RepositoryService::resolve_conflict(
-        &db,
-        &id,
-        "conflict.txt",
-        false,
-    )
-    .unwrap_err();
+    let err =
+        gybe_core::services::RepositoryService::resolve_conflict(&db, &id, "conflict.txt", false)
+            .unwrap_err();
     assert_eq!(err.code, "INVALID_STATE");
 }
 
@@ -496,7 +486,7 @@ fn resolve_conflict_theirs_side_wins() {
     let db = Database::in_memory().unwrap();
     let id = register(&db, &repo);
 
-    gitorbit_core::services::RepositoryService::resolve_conflict(&db, &id, "conflict.txt", false)
+    gybe_core::services::RepositoryService::resolve_conflict(&db, &id, "conflict.txt", false)
         .unwrap();
     assert_eq!(
         fs::read_to_string(repo.join("conflict.txt"))

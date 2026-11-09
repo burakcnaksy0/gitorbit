@@ -1,3 +1,5 @@
+> *Not: Bu belge projenin eski adı GitOrbit ile yazılmıştır; proje 2026-11 itibarıyla Gybe adıyla sürmektedir.*
+
 # GitOrbit v0.2 — Kullanım Paketi (geliştirme sürümü)
 
 Hedef: v0.1'de çalışan çekirdeği günlük kullanılan bir araca dönüştürmek.

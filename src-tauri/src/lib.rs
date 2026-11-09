@@ -1,21 +1,21 @@
-// GitOrbit — Tauri command layer
-// This file wires gitorbit-core services to the Tauri IPC bridge.
+// Gybe — Tauri command layer
+// This file wires gybe-core services to the Tauri IPC bridge.
 // Only the commands relevant to the current phase are exposed.
 
 // `AppError` owns several String fields (~144 bytes). Tauri's IPC error
 // serialization requires the concrete type, and the Err variant size is
 // irrelevant next to real command payloads (statuses, diffs, histories).
-// Same documented choice as `gitorbit-core` (see its lib.rs).
+// Same documented choice as `gybe-core` (see its lib.rs).
 #![allow(clippy::result_large_err)]
 
-use gitorbit_core::GitHubService;
-use gitorbit_core::db::Database;
-use gitorbit_core::services::{RepositoryService, SettingsService};
-use gitorbit_core::sync::{
+use gybe_core::GitHubService;
+use gybe_core::db::Database;
+use gybe_core::services::{RepositoryService, SettingsService};
+use gybe_core::sync::{
     RepoSyncOutcome, SyncOutcomeStatus, SyncPlanEntry, SyncRepoInput, SyncSkipReason,
     plan_sync_list,
 };
-use gitorbit_core::{
+use gybe_core::{
     AppInfo, AppSettings, AppSettingsUpdate, BranchComparison, BranchInfo, CloneResult,
     CommandError, CommitDetails, CommitResult, DeviceFlowSession, DiffOutput, GitCommitManager,
     GitConfigManager, GitEnvironment, GitHubAccount, GitHubProfile, GitHubPublishResult,
@@ -121,7 +121,7 @@ type CmdResult<T> = Result<T, AppError>;
 /// içermez).
 fn lock_or_recover<'a, T>(m: &'a std::sync::Mutex<T>, what: &str) -> std::sync::MutexGuard<'a, T> {
     m.lock().unwrap_or_else(|poisoned| {
-        eprintln!("[gitorbit] {what} mutex poison — kurtarma ile devam ediliyor");
+        eprintln!("[gybe] {what} mutex poison — kurtarma ile devam ediliyor");
         poisoned.into_inner()
     })
 }
@@ -172,7 +172,7 @@ fn ping() -> String {
 /// Returns Git environment info (version, installed, path).
 #[tauri::command]
 fn app_get_environment() -> GitEnvironment {
-    gitorbit_core::GitAdapter::detect_environment()
+    gybe_core::GitAdapter::detect_environment()
 }
 
 /// Adds a repository by path. Validates, canonicalises, and persists to DB.
@@ -1035,7 +1035,7 @@ async fn github_publish_repository(
 #[tauri::command]
 fn app_get_info() -> AppInfo {
     AppInfo {
-        name: "GitOrbit".to_string(),
+        name: "Gybe".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         os: std::env::consts::OS.to_string(),
         arch: std::env::consts::ARCH.to_string(),
@@ -1475,7 +1475,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init());
 
-    // WP-5: tek örnek kapısı — ikinci bir GitOrbit açılırsa yeni pencere yerine
+    // WP-5: tek örnek kapısı — ikinci bir Gybe açılırsa yeni pencere yerine
     // mevcut pencere öne alınır. (İki örnek = iki SQLite bağlantısı + iki
     // auto-fetch döngüsü; WAL + busy_timeout bunu tolere eder ama UX yanıltıcı.)
     // Debug derlemelerinde bilinçli olarak DEVRE DIŞI: `tauri dev` sıcak

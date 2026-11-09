@@ -1,6 +1,6 @@
-# GitOrbit — Sürüm Kontrol Listesi (Release Checklist v0.1.0)
+# Gybe — Sürüm Kontrol Listesi (Release Checklist v0.1.0)
 
-Bu liste, GitOrbit'in her kararlı sürüm veya sürüm adayı (Release Candidate) öncesinde doğrulanması gereken zorunlu kalite kapılarını tanımlar.
+Bu liste, Gybe'in her kararlı sürüm veya sürüm adayı (Release Candidate) öncesinde doğrulanması gereken zorunlu kalite kapılarını tanımlar.
 
 ---
 
@@ -9,7 +9,7 @@ Bu liste, GitOrbit'in her kararlı sürüm veya sürüm adayı (Release Candidat
 - [x] **Prettier Kod Biçimlendirme**: `npm run format:check` hatasız geçiyor.
 - [x] **ESLint Statik Kod Analizi**: `npm run lint` sıfır hata ve sıfır uyarı ile tamamlanıyor.
 - [x] **TypeScript Tip Güvenliği**: `npm run typecheck` (`tsc --noEmit`) sıfır hata veriyor.
-- [x] **Rust Kod Biçimlendirme**: `cargo fmt --check` hem `crates/gitorbit-core` hem de `src-tauri` için temiz.
+- [x] **Rust Kod Biçimlendirme**: `cargo fmt --check` hem `crates/gybe-core` hem de `src-tauri` için temiz.
 - [x] **Rust Clippy Lint**: `cargo clippy --all-targets -- -D warnings` sıfır uyarı/hata ile geçiyor.
 
 ---
@@ -19,7 +19,7 @@ Bu liste, GitOrbit'in her kararlı sürüm veya sürüm adayı (Release Candidat
 - [x] **Frontend Birim & Bileşen Testleri**: 9 test paketi, 40/40 birim/bileşen testi başarılı.
 - [x] **E2E Kullanıcı Akışı Testi**: `workflow.test.tsx` ile repo keşfi, staging, commit, branch, sync ve GitHub akışı başarılı.
 - [x] **Erişilebilirlik (a11y) & Klavye Testi**: `accessibility.test.tsx` ile landmark rolleri, erişilebilir isimler ve modal tuş kontrolleri başarılı.
-- [x] **Çekirdek Rust Kabul Testleri**: `crates/gitorbit-core` altında 40 kabul testi (`faz2`, `faz3`, `faz4`, `faz5`, `faz6`) ve 10 modül birim testi yeşil.
+- [x] **Çekirdek Rust Kabul Testleri**: `crates/gybe-core` altında 40 kabul testi (`faz2`, `faz3`, `faz4`, `faz5`, `faz6`) ve 10 modül birim testi yeşil.
 - [x] **Veritabanı Migration Testleri**: SQLite schema v1 ve v2 migration'ları temiz ortamda test edildi.
 
 ---

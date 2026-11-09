@@ -1,4 +1,4 @@
-/// GitOrbit credential store abstraction.
+/// Gybe credential store abstraction.
 ///
 /// # Security contract
 /// - Secrets (OAuth tokens) MUST be stored ONLY via this interface.
@@ -31,7 +31,7 @@ pub trait CredentialStore: Send + Sync {
 /// Keychain on macOS, Credential Manager on Windows).
 pub struct OsCredentialStore;
 
-const KEYRING_SERVICE: &str = "gitorbit";
+const KEYRING_SERVICE: &str = "gybe";
 
 impl CredentialStore for OsCredentialStore {
     fn set_credential(&self, key: &str, secret: &str) -> Result<(), CommandError> {

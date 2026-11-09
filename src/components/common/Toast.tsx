@@ -1,5 +1,5 @@
 /**
- * GitOrbit — sağ alt köşe bilgi bildirimi (toast) altyapısı.
+ * Gybe — sağ alt köşe bilgi bildirimi (toast) altyapısı.
  *
  * Başarılı git işlemlerinden sonra (commit, push, pull, branch, yayın…)
  * kullanıcıya kısa özetli, kendini temizleyen geri bildirim verir.

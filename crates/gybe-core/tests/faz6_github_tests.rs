@@ -1,7 +1,7 @@
 #![allow(clippy::result_large_err)]
 
-use gitorbit_core::CommandError;
-use gitorbit_core::CredentialStore;
+use gybe_core::CommandError;
+use gybe_core::CredentialStore;
 /// Faz 6 acceptance tests — GitHub account management and repository API.
 ///
 /// These tests use in-memory credential store and mock HTTP client,
@@ -15,10 +15,10 @@ use gitorbit_core::CredentialStore;
 /// - AC5: Disconnect clears credential store and DB record
 /// - AC6: Repository listing respects pagination
 /// - AC7: Device-flow expiry is detected
-use gitorbit_core::credential_store::InMemoryCredentialStore;
-use gitorbit_core::db::Database;
-use gitorbit_core::models::{GitHubConnectionStatus, PollResult};
-use gitorbit_core::services::github_service::{
+use gybe_core::credential_store::InMemoryCredentialStore;
+use gybe_core::db::Database;
+use gybe_core::models::{GitHubConnectionStatus, PollResult};
+use gybe_core::services::github_service::{
     GitHubHttpClient, GitHubService, PendingDeviceFlow, RawCreatedRepo, RawDeviceFlowResponse,
     RawOwner, RawPollResponse, RawRefreshResponse, RawRepoResponse, RawUserResponse,
 };
@@ -723,7 +723,7 @@ fn login(
     svc: &GitHubService,
     db: &Database,
     pending: &PendingDeviceFlow,
-) -> gitorbit_core::models::GitHubAccount {
+) -> gybe_core::models::GitHubAccount {
     let session_token = pending.session_token.clone();
     match svc
         .poll_device_flow(db, pending, &session_token)
@@ -770,7 +770,7 @@ fn test_refresh_flow_expired_token_auto_refreshes() {
 
     // Simulate expiry passing.
     db.with_conn(|conn| {
-        gitorbit_core::db::github_accounts::GitHubAccountDao::set_token_expires_at(
+        gybe_core::db::github_accounts::GitHubAccountDao::set_token_expires_at(
             conn,
             &account.id,
             Some("2020-01-01T00:00:00+00:00"),
@@ -817,9 +817,9 @@ fn test_refresh_flow_rejected_marks_auth_expired() {
     // Insert the account row directly (bypass device flow).
     let now = "2026-01-01T00:00:00+00:00".to_string();
     db.with_conn(|conn| {
-        gitorbit_core::db::github_accounts::GitHubAccountDao::upsert(
+        gybe_core::db::github_accounts::GitHubAccountDao::upsert(
             conn,
-            &gitorbit_core::models::GitHubAccount {
+            &gybe_core::models::GitHubAccount {
                 id: "acct-1".to_string(),
                 provider: "github".to_string(),
                 provider_user_id: "12345".to_string(),
@@ -868,9 +868,9 @@ fn test_refresh_flow_no_refresh_key_returns_old_token() {
 
     let now = "2026-01-01T00:00:00+00:00".to_string();
     db.with_conn(|conn| {
-        gitorbit_core::db::github_accounts::GitHubAccountDao::upsert(
+        gybe_core::db::github_accounts::GitHubAccountDao::upsert(
             conn,
-            &gitorbit_core::models::GitHubAccount {
+            &gybe_core::models::GitHubAccount {
                 id: "acct-legacy".to_string(),
                 provider: "github".to_string(),
                 provider_user_id: "777".to_string(),
@@ -908,7 +908,7 @@ fn test_refresh_flow_concurrent_calls_trigger_single_refresh() {
     let account = login(&svc, &db, &pending);
 
     db.with_conn(|conn| {
-        gitorbit_core::db::github_accounts::GitHubAccountDao::set_token_expires_at(
+        gybe_core::db::github_accounts::GitHubAccountDao::set_token_expires_at(
             conn,
             &account.id,
             Some("2020-01-01T00:00:00+00:00"),

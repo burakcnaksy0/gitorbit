@@ -1,4 +1,4 @@
-# GitOrbit — Developer Workspace
+# Gybe — Developer Workspace
 
 > Yerel Git iş akışlarını ve GitHub hesap yönetimini, hiçbir verini dışarıda
 > bırakmadan tek pencerede toplayan, açık kaynaklı masaüstü uygulaması.
@@ -6,17 +6,17 @@
 > **Durum:** v0.2.1 + güvenlik/performans denetimi sertleştirmesi · **Lisans:** MIT ·
 > **Platformlar:** Linux · macOS · Windows
 
-GitOrbit bir "git GUI'si"nden fazlasını hedefler: çok depolu bir **çalışma
-alanı**. Depolarını tanımlarsın; GitOrbit arka planda uzaktan gelen
+Gybe bir "git GUI'si"nden fazlasını hedefler: çok depolu bir **çalışma
+alanı**. Depolarını tanımlarsın; Gybe arka planda uzaktan gelen
 değişiklikleri izler, rozetlerle bildirir, sen de commit → branch → merge →
 push zincirini terminal açmadan yürütürsün. Uygulama tamamen yereldir:
 hesap zorunluluğu yok, telemetri yok, bulut hesabı yok — GitHub entegrasyonu
 tamamen isteğe bağlıdır.
 
 Masaüstü kabuğu **Tauri 2**, arayüz **React 19 + TypeScript + Tailwind CSS v4**,
-Git/sistem çekirdeği **Rust** (`gitorbit-core`). Git işlemleri `libgit2`
+Git/sistem çekirdeği **Rust** (`gybe-core`). Git işlemleri `libgit2`
 bağımlılığı olmadan, sistem `git`'inin makine-okunur çıktısı (`--porcelain=v2`,
-`-z`) ayrıştırılarak yapılır — yani GitOrbit, komut satırındaki Git'in
+`-z`) ayrıştırılarak yapılır — yani Gybe, komut satırındaki Git'in
 görsel bir uzantısıdır; sihirli bir paralel dünya değil.
 
 ---
@@ -97,11 +97,11 @@ görsel bir uzantısıdır; sihirli bir paralel dünya değil.
 
 ## 🆚 Rakiplerden Farkı — Neyi Farklı Yapıyoruz?
 
-Önce dürüst çerçeve: GitOrbit, rakiplerinin yaptığı **her** şeyi yapmıyor
+Önce dürüst çerçeve: Gybe, rakiplerinin yaptığı **her** şeyi yapmıyor
 (aşağıdaki "Bilinçli Sınırlar" tablosuna bak). İddiası şu: **yaptığı işi,
 kullanıcının verisine ve dikkatine saygı gösteren bir sıralamayla yapıyor.**
 
-| Boyut | Sektörde yaygın durum | GitOrbit |
+| Boyut | Sektörde yaygın durum | Gybe |
 | --- | --- | --- |
 | **Kimlik bilgisi** | Token'lar genelde kendi vault'una/cloud hesabına, config'e ya da OS depolayıcısına "yardımcı" ile yazılır; birçok araç hesap açmayı şart koşar | Token ve refresh anahtarı **yalnızca işletim sistemi anahtarlığında**; işlemeye özel süreç ortamında (`GIT_ASKPASS` tüpü ile) yaşar; diske/URL'e/SQLite'a/log'a **asla** yazılmaz. OAuth App secret'ı mimari olarak yok |
 | **Hesap/telemetri** | Üretici hesabı (Atlassian/GitKraken vs.) ve uzaktan analitik yaygın | Kurulumdan ilk commit'e kadar hesap zorunluluğu yok; GitHub bağlantısı %100 isteğe bağlı; telemetri yok |
@@ -116,7 +116,7 @@ kullanıcının verisine ve dikkatine saygı gösteren bir sıralamayla yapıyor
 Konumlandırma özeti: **GitHub Desktop**'un sadeliği + **Fork/Sourcetree**'nin
 çok depolu iş akışı + **GitButler**'ın günlük yaşam kalitesi — bunları
 **GitKraken tarzı hesap/cloud bağımlılığı olmadan** ve açık kaynak olarak
-hedefler. Terminal hâlâ en güçlü araçtır; GitOrbit onu ikame etmeye değil,
+hedefler. Terminal hâlâ en güçlü araçtır; Gybe onu ikame etmeye değil,
 sürtünmeyi kaldırmaya çalışır.
 
 ---
@@ -126,7 +126,7 @@ sürtünmeyi kaldırmaya çalışır.
 | Yapılmıyor | Neden |
 | --- | --- |
 | Etkileşimli rebase, cherry-pick UI'ı | Yüksek yıkıcılık, terminalde çok daha güvenli kontrol |
-| Satır içi (3 panelli) merge editörü | Karma içerik çözümü editörün işi; GitOrbit tarafa geçişi ve takibi verir |
+| Satır içi (3 panelli) merge editörü | Karma içerik çözümü editörün işi; Gybe tarafa geçişi ve takibi verir |
 | Otomatik `git push --force`, otomatik pull | Kullanıcı onayı olmayan yıkıcı/istem dışı işlem ilkesi |
 | Depo grupları/etiket CRUD arayüzü | Kapsam yönetimi; terminal serbest |
 | Bulut senkronizasyonu, iş birliği özellikleri | Yerel-ilk mimari; veri sahibi kullanıcı |
@@ -145,7 +145,7 @@ sürtünmeyi kaldırmaya çalışır.
 │  src-tauri: Tauri 2 kabuğu, komut yönlendirme,           │
 │  single-instance, CSP, OS bildirim/dialog eklentileri    │
 ├──────────────────────────────────────────────────────────┤
-│  gitorbit-core (Rust)                                    │
+│  gybe-core (Rust)                                    │
 │  git/    status · diff · commit · branch · merge · stash │
 │          · remote · ignore · graph · history · adapter   │
 │  services/  RepositoryService · GitHubService            │
@@ -205,7 +205,7 @@ Detaylar ve bildirim politikası: `SECURITY.md`, `docs/adr/0002-os-credential-st
 
 | Kapı | Komut | Durum |
 | --- | --- | --- |
-| Rust çekirdek (birim + kabul) | `cargo test --manifest-path crates/gitorbit-core/Cargo.toml --features test-support` | **111 test** |
+| Rust çekirdek (birim + kabul) | `cargo test --manifest-path crates/gybe-core/Cargo.toml --features test-support` | **111 test** |
 | Tauri kabuk | `cargo test` (`src-tauri/`) | 3 test |
 | Frontend birim/bileşen/a11y | `npm test` (Vitest) | **130 test / 26 dosya** |
 | Tip denetimi | `npm run typecheck` | temiz |
@@ -249,7 +249,7 @@ npm run tauri build    # üretim derlemesi
 ```
 
 > Geliştirme kısayolu: `tauri.conf.json` içindeki `build.additionalWatchFolders:
-> ["../crates"]` sayesinde `gitorbit-core` kodu değişince `tauri dev` kendini
+> ["../crates"]` sayesinde `gybe-core` kodu değişince `tauri dev` kendini
 > yeniden derler. (Anahtar adı bilinçli olarak eski/camelCase: kurulu
 > `@tauri-apps/cli` 2.12.4'ün şeması güncel kebab-case adını henüz tanımıyor;
 > `tauri-utils` 2.10 her iki adı da kabul ediyor.)
@@ -261,7 +261,7 @@ kullanmak istersen kendi OAuth App'inin `client_id`'sını verebilirsin
 (RFC 8628 gereği `client_id` sır değildir; **secret kullanılmaz**):
 
 ```bash
-GITORBIT_GITHUB_CLIENT_ID=<CLIENT_ID> npm run tauri dev
+GYBE_GITHUB_CLIENT_ID=<CLIENT_ID> npm run tauri dev
 ```
 
 ### Katkı kuralları
@@ -278,17 +278,17 @@ Detaylar: `CONTRIBUTING.md` · `AGENTS.md`.
 ## 📁 Proje Yapısı
 
 ```text
-GitOrbit/
+Gybe/
 ├── .github/workflows/          # Multi-platform CI (Linux, macOS, Windows)
 ├── AGENTS.md                   # Kalıcı geliştirme kuralları (agent + insan)
 ├── CONTRIBUTING.md             # Katkı rehberi ve kalite kapıları
 ├── SECURITY.md                 # Güvenlik açığı bildirim politikası
-├── crates/gitorbit-core/       # Rust çekirdek: git motoru, SQLite, keyring
+├── crates/gybe-core/       # Rust çekirdek: git motoru, SQLite, keyring
 │   ├── src/{git,db,services}/  #   + credential_store, sync planlayıcı
 │   └── tests/                  # Faz 2-7 kabul testleri + denetim regresyonları
 ├── docs/
 │   ├── adr/                    # ADR-0001 Device Flow · 0002 Keyring · 0003 Git sürümü · 0004 Paketleme
-│   ├── GitOrbit_System_Design_PRD.md · GitOrbit_Engineering_Specification_v1.1.md
+│   ├── Gybe_System_Design_PRD.md · Gybe_Engineering_Specification_v1.1.md
 │   ├── KULLANIM_v0.2.md        # v0.2 özelliklerinin kullanıcı rehberi
 │   ├── ROADMAP_v0.2_kullanim.md
 │   ├── RELEASE_NOTES_v0.1.0.md · RELEASE_NOTES_v0.2.md · RELEASE_CHECKLIST.md
@@ -312,6 +312,7 @@ GitOrbit/
 | **v0.1** | Çekirdek | Depo kataloğu, status/diff/stage/commit, dal yönetimi, push/fetch/pull, Device Flow + keyring, geçmiş listesi, CI |
 | **v0.2** | Günlük kullanım (12/12) | ignore + stash, auto-fetch + OS bildirimi + kontrollü amend, komut paleti + sürükle-bırak, commit grafiği, çakışma bandı + tümünü-eşitle, pin + onboarding |
 | **v0.2.1** | Güvenlik tazeleme + denetim | Refresh-token ile şeffaf token yenileme; GO/CB/R kimlikli denetim bulgularının 9 iş paketinde kapatılması (perf, veri kaybı kapıları, yarış koşulları, CSP, worktree ignore, odak erişilebilirliği) |
+| **2026-11** | İsim değişikliği | Proje **GitOrbit → Gybe** olarak yeniden adlandırıldı (GitHub'daki aynı adlı açık kaynak Git istemcisiyle çakışma nedeniyle). Ürün ve kod tabanı aynıdır; keyring hizmet adı (`gitorbit→gybe`) ve veri dizini değiştiği için mevcut kurulumlarda GitHub hesabının bir kez yeniden bağlanması ve depoların bir kez eklenmesi gerekir |
 
 ---
 

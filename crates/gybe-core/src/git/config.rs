@@ -85,11 +85,11 @@ impl GitConfigManager {
         email: &str,
     ) -> Result<(), CommandError> {
         const FILTER: &str = concat!(
-            "if [ \"$GIT_AUTHOR_EMAIL\" = \"$GITORBIT_FROM_EMAIL\" ]; then ",
-            "GIT_AUTHOR_NAME=\"$GITORBIT_NAME\"; GIT_AUTHOR_EMAIL=\"$GITORBIT_EMAIL\"; ",
+            "if [ \"$GIT_AUTHOR_EMAIL\" = \"$GYBE_FROM_EMAIL\" ]; then ",
+            "GIT_AUTHOR_NAME=\"$GYBE_NAME\"; GIT_AUTHOR_EMAIL=\"$GYBE_EMAIL\"; ",
             "export GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL; fi; ",
-            "if [ \"$GIT_COMMITTER_EMAIL\" = \"$GITORBIT_FROM_EMAIL\" ]; then ",
-            "GIT_COMMITTER_NAME=\"$GITORBIT_NAME\"; GIT_COMMITTER_EMAIL=\"$GITORBIT_EMAIL\"; ",
+            "if [ \"$GIT_COMMITTER_EMAIL\" = \"$GYBE_FROM_EMAIL\" ]; then ",
+            "GIT_COMMITTER_NAME=\"$GYBE_NAME\"; GIT_COMMITTER_EMAIL=\"$GYBE_EMAIL\"; ",
             "export GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; fi"
         );
         GitAdapter::execute_with_env_and_timeout(
@@ -97,9 +97,9 @@ impl GitConfigManager {
             &["filter-branch", "-f", "--env-filter", FILTER, "--", "--all"],
             &[
                 ("FILTER_BRANCH_SQUELCH_WARNING", "1"),
-                ("GITORBIT_FROM_EMAIL", from_email),
-                ("GITORBIT_NAME", name),
-                ("GITORBIT_EMAIL", email),
+                ("GYBE_FROM_EMAIL", from_email),
+                ("GYBE_NAME", name),
+                ("GYBE_EMAIL", email),
             ],
             Some(Duration::from_secs(120)),
         )?;

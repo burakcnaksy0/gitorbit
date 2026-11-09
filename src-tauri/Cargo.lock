@@ -1502,35 +1502,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gitorbit"
-version = "0.1.0"
-dependencies = [
- "gitorbit-core",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
-]
-
-[[package]]
-name = "gitorbit-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "keyring",
- "libc",
- "rusqlite",
- "serde",
- "serde_json",
- "ureq",
- "uuid",
-]
-
-[[package]]
 name = "glib"
 version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1644,6 +1615,35 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "gybe"
+version = "0.1.0"
+dependencies = [
+ "gybe-core",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+]
+
+[[package]]
+name = "gybe-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "keyring",
+ "libc",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "ureq",
+ "uuid",
 ]
 
 [[package]]

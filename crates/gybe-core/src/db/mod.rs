@@ -46,22 +46,22 @@ impl Database {
 
     /// Opens the default per-user database in a platform-appropriate data directory.
     ///
-    /// - Linux/macOS: `$XDG_DATA_HOME/gitorbit/gitorbit.db`
-    ///   (falls back to `$HOME/.local/share/gitorbit/gitorbit.db`)
-    /// - Windows: `%APPDATA%\gitorbit\gitorbit.db`
+    /// - Linux/macOS: `$XDG_DATA_HOME/gybe/gybe.db`
+    ///   (falls back to `$HOME/.local/share/gybe/gybe.db`)
+    /// - Windows: `%APPDATA%\gybe\gybe.db`
     pub fn open_default() -> Result<Self, CommandError> {
         let data_dir = Self::resolve_data_dir()?;
-        let db_path = data_dir.join("gitorbit.db");
+        let db_path = data_dir.join("gybe.db");
         Self::open(&db_path)
     }
 
-    /// Resolves the platform data directory for GitOrbit.
+    /// Resolves the platform data directory for Gybe.
     fn resolve_data_dir() -> Result<PathBuf, CommandError> {
         // Try XDG_DATA_HOME first (Linux/macOS)
         if let Ok(xdg) = std::env::var("XDG_DATA_HOME")
             && !xdg.is_empty()
         {
-            return Ok(PathBuf::from(xdg).join("gitorbit"));
+            return Ok(PathBuf::from(xdg).join("gybe"));
         }
         // Fall back to $HOME/.local/share on Unix, %APPDATA% on Windows
         let home = std::env::var("HOME")
@@ -74,13 +74,13 @@ impl Database {
         #[cfg(windows)]
         {
             if let Ok(appdata) = std::env::var("APPDATA") {
-                return Ok(PathBuf::from(appdata).join("gitorbit"));
+                return Ok(PathBuf::from(appdata).join("gybe"));
             }
         }
         Ok(PathBuf::from(home)
             .join(".local")
             .join("share")
-            .join("gitorbit"))
+            .join("gybe"))
     }
 
     /// Creates an in-memory SQLite database with migrations applied, ideal for unit testing.

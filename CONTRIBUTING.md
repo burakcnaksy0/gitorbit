@@ -1,6 +1,6 @@
-# GitOrbit'a Katkı Rehberi
+# Gybe'a Katkı Rehberi
 
-GitOrbit'e ilgi gösterdiğiniz için teşekkürler! Katkılar; hata düzeltmeleri, yeni özellikler, dokümantasyon ve testler dahil her biçimde hoş karşılanır.
+Gybe'e ilgi gösterdiğiniz için teşekkürler! Katkılar; hata düzeltmeleri, yeni özellikler, dokümantasyon ve testler dahil her biçimde hoş karşılanır.
 
 ## İçindekiler
 
@@ -50,10 +50,10 @@ npm run typecheck
 npm test
 
 # Rust çekirdek + Tauri kabuğu
-cargo fmt --manifest-path crates/gitorbit-core/Cargo.toml -- --check
+cargo fmt --manifest-path crates/gybe-core/Cargo.toml -- --check
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo clippy --manifest-path crates/gitorbit-core/Cargo.toml --features test-support --all-targets -- -D warnings
-cargo test --manifest-path crates/gitorbit-core/Cargo.toml --features test-support
+cargo clippy --manifest-path crates/gybe-core/Cargo.toml --features test-support --all-targets -- -D warnings
+cargo test --manifest-path crates/gybe-core/Cargo.toml --features test-support
 ```
 
 Testi devre dışı bırakarak, atlayarak veya zayıflatarak yeşil kapı elde etmeye çalışmayın. Çalıştırılamayan bir test varsa PR açıklamasında nedenini belirtin.
@@ -72,7 +72,7 @@ Rust entegrasyon testleri **geçici dizinlerde gerçek Git repository'leri** olu
 - **React UI** yalnızca tanımlı Tauri command'lerini çağırır; Git protokol mantığı bilmez.
 - **Rust servis katmanı** iş kurallarının ve güvenlik kontrollerinin evidir.
 - UI presentation tipleri (`src/types/navigation.ts`) yalnızca `Shell.tsx` içinde IPC tiplerinden türetilir; sahte/uydurma veri taşımaz.
-- Yeni komut eklerken: `src-tauri/src/lib.rs` (command), `crates/gitorbit-core` (servis mantığı), `src/types/ipc.ts` (tip sözleşmesi) ve `src/lib/tauriCommands.ts` (sarmalayıcı) birlikte güncellenir.
+- Yeni komut eklerken: `src-tauri/src/lib.rs` (command), `crates/gybe-core` (servis mantığı), `src/types/ipc.ts` (tip sözleşmesi) ve `src/lib/tauriCommands.ts` (sarmalayıcı) birlikte güncellenir.
 
 ## Güvenlik ilkeleri
 

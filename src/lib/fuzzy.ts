@@ -54,7 +54,7 @@ export function fuzzyFilter<T>(
 // Son kullanılanlar (localStorage, en yeni 5)
 // ---------------------------------------------------------------------------
 
-const RECENT_KEY = "gitorbit.palette.recents";
+const RECENT_KEY = "gybe.palette.recents";
 const RECENT_LIMIT = 5;
 
 export function loadRecents(): string[] {

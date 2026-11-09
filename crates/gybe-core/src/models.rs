@@ -5,7 +5,7 @@ pub struct GitEnvironment {
     pub installed: bool,
     pub version: Option<String>,
     pub executable_path: Option<String>,
-    /// Minimum Git version supported by GitOrbit (documented in README).
+    /// Minimum Git version supported by Gybe (documented in README).
     pub minimum_version: Option<String>,
     /// True when Git is installed and its version is at least `minimum_version`.
     pub meets_minimum: bool,

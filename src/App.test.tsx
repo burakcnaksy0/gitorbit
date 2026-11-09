@@ -30,7 +30,7 @@ const history = {
   next_offset: 1,
 };
 
-describe("GitOrbit desktop shell", () => {
+describe("Gybe desktop shell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(tauriCommands.appGetEnvironment).mockResolvedValue(mockEnvironment);
@@ -51,7 +51,7 @@ describe("GitOrbit desktop shell", () => {
     render(<App />);
 
     const header = screen.getByRole("banner");
-    expect(within(header).getAllByText("GitOrbit").length).toBeGreaterThanOrEqual(1);
+    expect(within(header).getAllByText("Gybe").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("navigation")).toBeInTheDocument();
 
     await waitFor(() => {
@@ -67,7 +67,7 @@ describe("GitOrbit desktop shell", () => {
     render(<App />);
     const nav = screen.getByRole("navigation");
 
-    expect(screen.getByText("GitOrbit'e Hoş Geldiniz")).toBeInTheDocument();
+    expect(screen.getByText("Gybe'e Hoş Geldiniz")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getAllByText("project").length).toBeGreaterThan(0);
     });

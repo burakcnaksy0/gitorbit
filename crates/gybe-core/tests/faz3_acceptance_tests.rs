@@ -5,11 +5,11 @@
 ///   - Diff (staged ve unstaged)
 ///   - Discard (ikinci durum kontrolü, path traversal koruması)
 ///   - Büyük diff boyutu koruması (MAX_DIFF_BYTES)
-use gitorbit_core::db::Database;
-use gitorbit_core::git::GitDiffParser;
-use gitorbit_core::git::diff::MAX_DIFF_BYTES;
-use gitorbit_core::models::DiffLineKind;
-use gitorbit_core::services::RepositoryService;
+use gybe_core::db::Database;
+use gybe_core::git::GitDiffParser;
+use gybe_core::git::diff::MAX_DIFF_BYTES;
+use gybe_core::models::DiffLineKind;
+use gybe_core::services::RepositoryService;
 use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
@@ -34,7 +34,7 @@ fn setup_repo_with_commit() -> (tempfile::TempDir, std::path::PathBuf) {
     let _ = Command::new("git")
         .arg("-C")
         .arg(&repo)
-        .args(["config", "user.email", "test@gitorbit.dev"])
+        .args(["config", "user.email", "test@gybe.dev"])
         .output();
 
     // Write an initial file and commit it so the index exists and restore works

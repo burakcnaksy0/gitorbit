@@ -12,7 +12,7 @@ import {
 
 vi.mock("../lib/tauriCommands", () => import("./mockTauriCommands"));
 
-describe("GitOrbit — Accessibility & Keyboard Navigation (a11y)", () => {
+describe("Gybe — Accessibility & Keyboard Navigation (a11y)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(tauriCommands.appGetEnvironment).mockResolvedValue(mockEnvironment);

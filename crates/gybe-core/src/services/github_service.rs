@@ -37,15 +37,14 @@ use uuid::Uuid;
 // GitHub client_id configuration
 // OAuth App with Device Flow enabled (public client — no client secret).
 // Per RFC 8628 the client_id is NOT a secret and may ship in the binary.
-// Override at launch with GITORBIT_GITHUB_CLIENT_ID (e.g. for forks/custom
+// Override at launch with GYBE_GITHUB_CLIENT_ID (e.g. for forks/custom
 // OAuth app registrations).
 // ---------------------------------------------------------------------------
 
 const DEFAULT_GITHUB_CLIENT_ID: &str = "Ov23liE5su3QknwkABnY";
 
 fn github_client_id() -> String {
-    std::env::var("GITORBIT_GITHUB_CLIENT_ID")
-        .unwrap_or_else(|_| DEFAULT_GITHUB_CLIENT_ID.to_string())
+    std::env::var("GYBE_GITHUB_CLIENT_ID").unwrap_or_else(|_| DEFAULT_GITHUB_CLIENT_ID.to_string())
 }
 
 const GITHUB_OAUTH_SCOPE: &str = "read:user,public_repo";
@@ -315,7 +314,7 @@ impl GitHubHttpClient for RealGitHubHttpClient {
         let resp = http_agent()
             .post("https://github.com/login/device/code")
             .set("Accept", "application/json")
-            .set("User-Agent", "GitOrbit/0.1")
+            .set("User-Agent", "Gybe/0.1")
             .send_form(&[("client_id", client_id), ("scope", scope)])
             .map_err(map_ureq_error)?;
 
@@ -332,7 +331,7 @@ impl GitHubHttpClient for RealGitHubHttpClient {
         let resp = http_agent()
             .post("https://github.com/login/oauth/access_token")
             .set("Accept", "application/json")
-            .set("User-Agent", "GitOrbit/0.1")
+            .set("User-Agent", "Gybe/0.1")
             .send_form(&[
                 ("client_id", client_id),
                 ("device_code", device_code),
@@ -353,7 +352,7 @@ impl GitHubHttpClient for RealGitHubHttpClient {
         let resp = http_agent()
             .post("https://github.com/login/oauth/access_token")
             .set("Accept", "application/json")
-            .set("User-Agent", "GitOrbit/0.1")
+            .set("User-Agent", "Gybe/0.1")
             .send_form(&[
                 ("client_id", client_id),
                 ("refresh_token", refresh_token),
@@ -371,7 +370,7 @@ impl GitHubHttpClient for RealGitHubHttpClient {
             .set("Authorization", &format!("Bearer {}", token))
             .set("Accept", "application/vnd.github+json")
             .set("X-GitHub-Api-Version", "2022-11-28")
-            .set("User-Agent", "GitOrbit/0.1")
+            .set("User-Agent", "Gybe/0.1")
             .call()
             .map_err(map_ureq_error)?;
 
@@ -395,7 +394,7 @@ impl GitHubHttpClient for RealGitHubHttpClient {
             .set("Authorization", &format!("Bearer {}", token))
             .set("Accept", "application/vnd.github+json")
             .set("X-GitHub-Api-Version", "2022-11-28")
-            .set("User-Agent", "GitOrbit/0.1")
+            .set("User-Agent", "Gybe/0.1")
             .call()
             .map_err(map_ureq_error)?;
 
@@ -424,7 +423,7 @@ impl GitHubHttpClient for RealGitHubHttpClient {
             .set("Authorization", &format!("Bearer {}", token))
             .set("Accept", "application/vnd.github+json")
             .set("X-GitHub-Api-Version", "2022-11-28")
-            .set("User-Agent", "GitOrbit/0.1")
+            .set("User-Agent", "Gybe/0.1")
             .send_json(body)
             .map_err(map_ureq_error)?;
 
@@ -1074,7 +1073,7 @@ impl GitHubService {
 // ---------------------------------------------------------------------------
 
 /// Optional user mapping: GitHub login -> SSH host alias defined in
-/// `~/.ssh/config`. Read from `~/.config/gitorbit/ssh_hosts.toml` with one
+/// `~/.ssh/config`. Read from `~/.config/gybe/ssh_hosts.toml` with one
 /// `login = "alias"` pair per line (`#` starts a comment). Missing file or
 /// missing entry simply means "no SSH preference for this account".
 pub fn ssh_host_alias(login: &str) -> Option<String> {
@@ -1093,7 +1092,7 @@ pub fn ssh_host_alias(login: &str) -> Option<String> {
                 PathBuf::from(home).join(".config")
             }),
     }?;
-    let path = config_dir.join("gitorbit").join("ssh_hosts.toml");
+    let path = config_dir.join("gybe").join("ssh_hosts.toml");
     let content = std::fs::read_to_string(path).ok()?;
     parse_ssh_hosts(&content, login)
 }

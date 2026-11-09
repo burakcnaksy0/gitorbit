@@ -6,8 +6,8 @@ import { MockRepository } from "../../types/navigation";
 describe("StatusBar component (Faz 5 Remote & Operation State)", () => {
   const baseRepo: MockRepository = {
     id: "repo_123",
-    name: "GitOrbit",
-    path: "/home/user/GitOrbit",
+    name: "Gybe",
+    path: "/home/user/Gybe",
     currentBranch: "main",
     ahead: 2,
     behind: 1,

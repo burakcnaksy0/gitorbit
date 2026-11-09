@@ -1,12 +1,12 @@
-# GitOrbit — Bağımlılık Lisans ve Güvenlik Envanteri (Faz 7)
+# Gybe — Bağımlılık Lisans ve Güvenlik Envanteri (Faz 7)
 
-Bu belge, GitOrbit projesinde kullanılan tüm doğrudan çalışma zamanı (runtime) ve geliştirme zamanı (dev) bağımlılıklarının lisans türlerini, kullanım amaçlarını ve güvenlik denetim sonuçlarını içerir.
+Bu belge, Gybe projesinde kullanılan tüm doğrudan çalışma zamanı (runtime) ve geliştirme zamanı (dev) bağımlılıklarının lisans türlerini, kullanım amaçlarını ve güvenlik denetim sonuçlarını içerir.
 
 ---
 
 ## 1. Lisans Uyumluluk Özeti
 
-GitOrbit, ticari ve açık kaynak kullanımına uygun, telif feragatli ve hoşgörülü (permissive) lisanslara sahip kütüphanelerle inşa edilmiştir. GPL / AGPL gibi copyleft kısıtlayıcı lisanslara sahip hiçbir çalışma zamanı kütüphanesi kullanılmamıştır.
+Gybe, ticari ve açık kaynak kullanımına uygun, telif feragatli ve hoşgörülü (permissive) lisanslara sahip kütüphanelerle inşa edilmiştir. GPL / AGPL gibi copyleft kısıtlayıcı lisanslara sahip hiçbir çalışma zamanı kütüphanesi kullanılmamıştır.
 
 | Kategori | Baskın Lisans Türleri | Uyumluluk Durumu |
 |---|---|---|
@@ -16,7 +16,7 @@ GitOrbit, ticari ve açık kaynak kullanımına uygun, telif feragatli ve hoşg�
 
 ---
 
-## 2. Rust Bağımlılıkları Envanteri (`crates/gitorbit-core` & `src-tauri`)
+## 2. Rust Bağımlılıkları Envanteri (`crates/gybe-core` & `src-tauri`)
 
 | Paket | Sürüm | Lisans | Kullanım Amacı | Güvenlik / İzolasyon Notu |
 |---|---|---|---|---|

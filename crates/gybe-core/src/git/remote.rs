@@ -7,10 +7,10 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Geçici push credential helper'ı: git, `!` ile başlayan helper'ı shell'de
-/// çalıştırır; token yalnızca çocuğun ortamındaki GITORBIT_GH_TOKEN'dan okunur.
+/// çalıştırır; token yalnızca çocuğun ortamındaki GYBE_GH_TOKEN'dan okunur.
 /// Böylece token argv'ye, URL'e, .git/config'e veya loglara asla düşmez.
 const PUSH_TOKEN_HELPER: &str =
-    "!f() { echo username=x-access-token; echo \"password=$GITORBIT_GH_TOKEN\"; }; f";
+    "!f() { echo username=x-access-token; echo \"password=$GYBE_GH_TOKEN\"; }; f";
 
 pub struct GitRemoteManager;
 
@@ -136,7 +136,7 @@ impl GitRemoteManager {
                 if reject {
                     return Err(CommandError::invalid_path(
                         "Remote adresine gömülü kullanıcı adı/parola/token kabul edilmiyor. \
-                         Kimlik bilgileri GitOrbit tarafından geçici olarak enjekte edilir; \
+                         Kimlik bilgileri Gybe tarafından geçici olarak enjekte edilir; \
                          URL'i kimlik bilgisi olmadan girin.",
                     ));
                 }
@@ -194,7 +194,7 @@ impl GitRemoteManager {
             .and_then(|u| Self::parse_remote_owner(u).map(|(_, https)| https))
             .unwrap_or(false);
         if is_https {
-            envs.push(("GITORBIT_GH_TOKEN", token));
+            envs.push(("GYBE_GH_TOKEN", token));
             envs.push(("GIT_CONFIG_COUNT", "2"));
             envs.push(("GIT_CONFIG_KEY_0", "credential.helper"));
             envs.push(("GIT_CONFIG_VALUE_0", "")); // stored helpers sıfırla

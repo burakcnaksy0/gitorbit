@@ -1,3 +1,5 @@
+> *Not: Bu belge projenin eski adı GitOrbit ile yazılmıştır; proje 2026-11 itibarıyla Gybe adıyla sürmektedir.*
+
 # GitOrbit v0.2 Yol Haritası — Kullanım Paketi (12 Madde)
 
 > Bu doküman, "kullanım açısından eklenebilecekler" listesindeki 12 maddenin

@@ -1,8 +1,8 @@
 [package]
-name = "gitorbit-core"
+name = "gybe-core"
 version = "0.1.0"
 edition = "2024"
-description = "GitOrbit core domain, Git CLI adapter, and SQLite storage"
+description = "Gybe core domain, Git CLI adapter, and SQLite storage"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

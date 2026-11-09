@@ -18,7 +18,7 @@ const mockHistory: HistoryOutput = {
       message:
         "feat: add user authentication\n\nImplemented JWT verification middleware.",
       author_name: "Developer One",
-      author_email: "dev@gitorbit.dev",
+      author_email: "dev@gybe.dev",
       authored_at: "2026-10-29T10:00:00Z",
       parents: ["b0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9"],
     refs: [],
@@ -28,7 +28,7 @@ const mockHistory: HistoryOutput = {
       short_sha: "b0a1b2c",
       message: "chore: initial commit",
       author_name: "Maintainer",
-      author_email: "admin@gitorbit.dev",
+      author_email: "admin@gybe.dev",
       authored_at: "2026-10-28T09:00:00Z",
       parents: [],
     refs: [],
@@ -60,7 +60,7 @@ describe("HistoryView (Faz 4)", () => {
       screen.getByText("Implemented JWT verification middleware.")
     ).toBeInTheDocument();
     expect(screen.getAllByText(/Developer One/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/dev@gitorbit.dev/)).toBeInTheDocument();
+    expect(screen.getByText(/dev@gybe.dev/)).toBeInTheDocument();
     expect(
       screen.getByText("Tam Commit SHA: c1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0")
     ).toBeInTheDocument();
@@ -78,7 +78,7 @@ describe("HistoryView (Faz 4)", () => {
     fireEvent.click(commitItems[0]);
 
     expect(screen.getAllByText(/Maintainer/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/admin@gitorbit.dev/)).toBeInTheDocument();
+    expect(screen.getByText(/admin@gybe.dev/)).toBeInTheDocument();
   });
 
   it("handles empty repository gracefully without crashing (AC-9)", async () => {
@@ -110,7 +110,7 @@ describe("HistoryView (Faz 4)", () => {
           short_sha: "a9b8c7d",
           message: "docs: update readme",
           author_name: "Writer",
-          author_email: "writer@gitorbit.dev",
+          author_email: "writer@gybe.dev",
           authored_at: "2026-10-27T08:00:00Z",
           parents: [],
         refs: [],

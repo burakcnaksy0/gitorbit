@@ -44,7 +44,7 @@ export const WelcomeView: React.FC<WelcomeViewProps> = ({
             <span>Developer Workspace</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-            GitOrbit&apos;e Hoş Geldiniz
+            Gybe&apos;e Hoş Geldiniz
           </h1>
           <p className="text-slate-400 text-xs sm:text-sm mt-2 leading-relaxed">
             GitHub hesaplarınızı, yerel repolarınızı ve günlük Git iş akışlarınızı hızlı,

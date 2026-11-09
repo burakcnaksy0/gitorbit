@@ -1,4 +1,4 @@
-name: GitOrbit CI
+name: Gybe CI
 
 on:
   push:
@@ -39,7 +39,7 @@ jobs:
         run: npm run build
 
   core-rust:
-    name: GitOrbit Core Quality Gates (Rust)
+    name: Gybe Core Quality Gates (Rust)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -58,16 +58,16 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: crates/gitorbit-core -> target
+          workspaces: crates/gybe-core -> target
 
       - name: Core format check
-        run: cargo fmt --manifest-path crates/gitorbit-core/Cargo.toml -- --check
+        run: cargo fmt --manifest-path crates/gybe-core/Cargo.toml -- --check
 
       - name: Core Clippy lint
-        run: cargo clippy --manifest-path crates/gitorbit-core/Cargo.toml --features test-support --all-targets -- -D warnings
+        run: cargo clippy --manifest-path crates/gybe-core/Cargo.toml --features test-support --all-targets -- -D warnings
 
       - name: Core unit & acceptance tests (Faz 2, 3, 4, 5, 6)
-        run: cargo test --manifest-path crates/gitorbit-core/Cargo.toml --features test-support
+        run: cargo test --manifest-path crates/gybe-core/Cargo.toml --features test-support
 
   tauri-platform-matrix:
     name: Tauri Desktop Build (${{ matrix.platform.name }})

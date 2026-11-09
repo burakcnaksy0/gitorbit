@@ -9,7 +9,7 @@
 
 ## Güvenlik açığı bildirme
 
-GitOrbit, kullanıcılarının **GitHub erişim token'lara** ve **yerel kaynak kodu ağaçlarına** erişen bir masaüstü uygulamasıdır; bu nedenle güvenlik açıklarını sorumlu (responsible disclosure) yoluyla bildirmenizi rica ederiz.
+Gybe, kullanıcılarının **GitHub erişim token'lara** ve **yerel kaynak kodu ağaçlarına** erişen bir masaüstü uygulamasıdır; bu nedenle güvenlik açıklarını sorumlu (responsible disclosure) yoluyla bildirmenizi rica ederiz.
 
 - **Özel bildirim:** Projedeki bir GitHub güvenliği sorunu (`Security` sekmesi → "Report a vulnerability") üzerinden özel olarak bildirin.
 - **Herkese açık issue AÇMAYIN** — kamuya açık exploit ayrıntıları kullanıcı token'larını doğrudan riske atabilir.

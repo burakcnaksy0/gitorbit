@@ -37,7 +37,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <Layers className="w-3.5 h-3.5" />
           </div>
           <span className="font-bold tracking-tight text-xs sm:text-sm text-slate-100 hidden md:inline">
-            GitOrbit
+            Gybe
           </span>
         </div>
 
@@ -113,7 +113,7 @@ export const TopBar: React.FC<TopBarProps> = ({
       {/* Right Actions: Theme Toggle & Phase Indicator */}
       <div className="flex items-center gap-2 shrink-0">
         <span className="hidden xl:inline-flex text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-sky-400 border border-slate-700 font-mono">
-          {appVersion ? `v${appVersion}` : "GitOrbit"}
+          {appVersion ? `v${appVersion}` : "Gybe"}
         </span>
         <button
           type="button"

@@ -1,8 +1,8 @@
 {
-  "name": "gitorbit",
+  "name": "gybe",
   "private": true,
   "version": "0.1.0",
-  "description": "GitOrbit — Modern Git & GitHub Developer Workspace",
+  "description": "Gybe — Modern Git & GitHub Developer Workspace",
   "type": "module",
   "scripts": {
     "dev": "vite",

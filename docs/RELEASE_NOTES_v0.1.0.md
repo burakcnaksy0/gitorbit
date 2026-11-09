@@ -1,3 +1,5 @@
+> *Not: Bu belge projenin eski adı GitOrbit ile yazılmıştır; proje 2026-11 itibarıyla Gybe adıyla sürmektedir.*
+
 # GitOrbit v0.1.0 — Sürüm Notları (Release Candidate)
 
 GitOrbit'in ilk kararlı sürüm adayı olan **v0.1.0**, yerel Git iş akışlarını modern masaüstü arayüzü ve güvenli GitHub entegrasyonuyla buluşturan uçtan uca tamamlanmış bir Developer Workspace sunar.

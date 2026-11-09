@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 pub struct GitAdapter;
 
-/// Minimum Git version supported by GitOrbit.
+/// Minimum Git version supported by Gybe.
 ///
 /// `git restore --staged` (used for unstage) requires Git >= 2.23.
 /// Documented in README.
@@ -130,7 +130,7 @@ impl GitAdapter {
         {
             return Err(CommandError::new(
                 "BARE_REPOSITORY",
-                "Seçilen klasör bir bare (çıplak) Git deposu. GitOrbit normal çalışma ağacı olan depoları destekler.",
+                "Seçilen klasör bir bare (çıplak) Git deposu. Gybe normal çalışma ağacı olan depoları destekler.",
                 false,
             )
             .with_recovery_hint(

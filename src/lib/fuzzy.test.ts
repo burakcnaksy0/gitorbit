@@ -70,7 +70,7 @@ describe("son kullanilanlar", () => {
   });
 
   it("bozuk depolama icerigi yutulur", () => {
-    localStorage.setItem("gitorbit.palette.recents", "{bozuk");
+    localStorage.setItem("gybe.palette.recents", "{bozuk");
     expect(loadRecents()).toEqual([]);
   });
 });

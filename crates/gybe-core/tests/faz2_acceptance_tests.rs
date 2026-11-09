@@ -1,7 +1,7 @@
-use gitorbit_core::db::Database;
-use gitorbit_core::git::{GitAdapter, GitStatusParser};
-use gitorbit_core::models::ChangedFileStatus;
-use gitorbit_core::services::RepositoryService;
+use gybe_core::db::Database;
+use gybe_core::git::{GitAdapter, GitStatusParser};
+use gybe_core::models::ChangedFileStatus;
+use gybe_core::services::RepositoryService;
 use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
@@ -38,7 +38,7 @@ fn test_temporary_repo_lifecycle_and_acceptance_criteria() {
     let _ = Command::new("git")
         .arg("-C")
         .arg(&repo_path)
-        .args(["config", "user.email", "test@gitorbit.dev"])
+        .args(["config", "user.email", "test@gybe.dev"])
         .output();
 
     let db = Database::in_memory().expect("In-memory DB oluşturulamadı");

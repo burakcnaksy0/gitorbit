@@ -1,4 +1,4 @@
-# GitOrbit — Geliştirme Kuralları (agent + insan için kalıcı)
+# Gybe — Geliştirme Kuralları (agent + insan için kalıcı)
 
 Bu dosya depoda uygulanan işleyişi tanımlar. Yeni bir iş paketine başlamadan
 önce buradaki kurallar okunmuş kabul edilir.
@@ -8,7 +8,7 @@ Bu dosya depoda uygulanan işleyişi tanımlar. Yeni bir iş paketine başlamada
 1. **Bir iş paketi = bir commit.** Kapsamı net, geri döndürülebilir birimlerle
    ilerle; gereksiz refactor yapma, dokunmadığın kodu "düzeltme".
 2. **Kapısız commit yok.** İlgili kapılar yeşilmeden commit atılmaz:
-   - `cargo test --manifest-path crates/gitorbit-core/Cargo.toml --features test-support`
+   - `cargo test --manifest-path crates/gybe-core/Cargo.toml --features test-support`
    - `cargo fmt` + `cargo check` + `cargo test` (`src-tauri/`)
    - `npx tsc --noEmit` + `npx vitest run` + `npm run build`
    Rust'a dokunulmayan bir pakette Rust kapıları son bilinen haliyle

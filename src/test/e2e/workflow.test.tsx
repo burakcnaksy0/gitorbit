@@ -21,7 +21,7 @@ vi.mock("../../lib/tauriCommands", () => import("../mockTauriCommands"));
 
 const mockIdentity: GitIdentity = {
   name: "Developer",
-  email: "dev@gitorbit.dev",
+  email: "dev@gybe.dev",
 };
 
 const mockBranches: BranchInfo[] = [
@@ -50,7 +50,7 @@ const mockHistory = {
       short_sha: "a1b2c3d",
       message: "feat: core domain",
       author_name: "Developer",
-      author_email: "dev@gitorbit.dev",
+      author_email: "dev@gybe.dev",
       authored_at: "2026-11-01T12:00:00Z",
       parents: [],
       refs: [],
@@ -84,7 +84,7 @@ const mockAccounts: GitHubAccount[] = [
   },
 ];
 
-describe("GitOrbit — End-to-End User Journey", () => {
+describe("Gybe — End-to-End User Journey", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(tauriCommands.appGetEnvironment).mockResolvedValue(mockEnvironment);
@@ -127,8 +127,8 @@ describe("GitOrbit — End-to-End User Journey", () => {
     render(<App />);
     const nav = screen.getByRole("navigation");
 
-    expect(screen.getAllByText("GitOrbit")[0]).toBeInTheDocument();
-    expect(screen.getByText("GitOrbit'e Hoş Geldiniz")).toBeInTheDocument();
+    expect(screen.getAllByText("Gybe")[0]).toBeInTheDocument();
+    expect(screen.getByText("Gybe'e Hoş Geldiniz")).toBeInTheDocument();
 
     // Repositories view
     fireEvent.click(within(nav).getByRole("button", { name: /Depolar/i }));

@@ -410,7 +410,7 @@ export const RepositoryListView: React.FC<RepositoryListViewProps> = ({
               <div>
                 <h2 className="text-sm font-bold text-slate-100">Depo Kaydını Kaldır</h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  Bu işlem yalnızca GitOrbit kaydını siler. Disk üzerindeki dosyalar
+                  Bu işlem yalnızca Gybe kaydını siler. Disk üzerindeki dosyalar
                   etkilenmez.
                 </p>
               </div>

@@ -1,7 +1,7 @@
-use gitorbit_core::db::Database;
-use gitorbit_core::models::RepositoryOperationState;
-use gitorbit_core::services::RepositoryService;
-use gitorbit_core::{GitOperationStateManager, GitRemoteManager};
+use gybe_core::db::Database;
+use gybe_core::models::RepositoryOperationState;
+use gybe_core::services::RepositoryService;
+use gybe_core::{GitOperationStateManager, GitRemoteManager};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -56,7 +56,7 @@ fn test_ac1_bare_remote_push_fetch_pull_sync() {
     init_local_repo(&repo_a_dir);
 
     // Initial commit in repo_a
-    fs::write(repo_a_dir.join("README.md"), "# GitOrbit\n").unwrap();
+    fs::write(repo_a_dir.join("README.md"), "# Gybe\n").unwrap();
     run_cmd(&repo_a_dir, &["add", "README.md"]);
     run_cmd(&repo_a_dir, &["commit", "-m", "Initial commit"]);
 

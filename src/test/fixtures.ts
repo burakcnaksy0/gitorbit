@@ -15,7 +15,7 @@ export const mockEnvironment: GitEnvironment = {
 };
 
 export const mockAppInfo: AppInfo = {
-  name: "GitOrbit",
+  name: "Gybe",
   version: "0.1.0",
   os: "linux",
   arch: "x86_64",

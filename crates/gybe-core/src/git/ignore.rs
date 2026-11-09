@@ -152,7 +152,7 @@ impl GitIgnoreManager {
             content.push('\n');
         }
         if content.is_empty() {
-            content.push_str("# GitOrbit — yoksayılan dosyalar\n");
+            content.push_str("# Gybe — yoksayılan dosyalar\n");
         }
         content.push_str(&pattern);
         content.push('\n');

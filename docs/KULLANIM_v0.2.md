@@ -1,4 +1,4 @@
-# GitOrbit v0.2 — Kullanım Paketi: Neler Yaptık, Nasıl Kullanılır
+# Gybe v0.2 — Kullanım Paketi: Neler Yaptık, Nasıl Kullanılır
 
 Bu belge v0.2'de eklenen 12 özelliğin kısa kullanıcı rehberidir. Teknik
 detaylar için `docs/RELEASE_NOTES_v0.2.md`, plan için

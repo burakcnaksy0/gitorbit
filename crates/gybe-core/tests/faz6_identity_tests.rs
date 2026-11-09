@@ -3,7 +3,7 @@
 //! `GitConfigManager::rewrite_authorship` yanlış kimlikle (makine varsayılanı)
 //! yazılmış commit'leri hesap kimliğine çevirmeli; diğer yazarlara dokunmamalı.
 
-use gitorbit_core::{GitCommitManager, GitConfigManager};
+use gybe_core::{GitCommitManager, GitConfigManager};
 use std::fs;
 use std::path::Path;
 use std::process::Command;

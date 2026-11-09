@@ -109,7 +109,7 @@ impl GitMergeManager {
             RepositoryOperationState::BisectInProgress => {
                 return Err(CommandError::new(
                     "OPERATION_NOT_SUPPORTED",
-                    "Bisect işlemi GitOrbit içinden sürdürülemez.",
+                    "Bisect işlemi Gybe içinden sürdürülemez.",
                     false,
                 ));
             }

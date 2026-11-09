@@ -1,3 +1,5 @@
+> *Not: Bu belge projenin eski adı GitOrbit ile yazılmıştır; proje 2026-11 itibarıyla Gybe adıyla sürmektedir.*
+
 # GitOrbit — Engineering Specification v1.1
 **Belge türü:** Uygulanabilir mühendislik spesifikasyonu ve AI coding çalışma kılavuzu  
 **Sürüm:** 1.1  

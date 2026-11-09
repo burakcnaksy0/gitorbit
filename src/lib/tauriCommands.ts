@@ -1,5 +1,5 @@
 /**
- * GitOrbit — Tauri command wrappers (Phase 2 & 3)
+ * Gybe — Tauri command wrappers (Phase 2 & 3)
  *
  * All Tauri IPC calls go through this module. The frontend never calls
  * `invoke()` directly — it always uses these typed wrappers.

@@ -1,3 +1,5 @@
+> *Not: Bu belge projenin eski adı GitOrbit ile yazılmıştır; proje 2026-11 itibarıyla Gybe adıyla sürmektedir.*
+
 # GitOrbit — Product Requirements Document ve Sistem Tasarımı
 
 > **Belge türü:** Product Requirements Document (PRD) + Software Requirements Specification (SRS) + System Design  

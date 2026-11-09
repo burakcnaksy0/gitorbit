@@ -1,5 +1,5 @@
 /**
- * GitOrbit — dialogs for the "folder is not a Git repository" flow and for
+ * Gybe — dialogs for the "folder is not a Git repository" flow and for
  * publishing a local repository to GitHub.
  *
  * - `NotGitChoiceModal`: asked when a plain folder is added. The user chooses
