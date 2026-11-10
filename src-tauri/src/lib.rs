@@ -170,9 +170,14 @@ fn ping() -> String {
 // ---------------------------------------------------------------------------
 
 /// Returns Git environment info (version, installed, path).
+/// v0.2.3: senkron komuttu — `detect_environment` iki süreç (where/git --version)
+/// doğurtur; senkron komutlar ana iş parçacığında yürüdüğü için Windows'ta açılışta
+/// pencereyi bir an donduruyordu (GO-01 denetiminin kaçırdığı tek komut).
 #[tauri::command]
-fn app_get_environment() -> GitEnvironment {
-    gybe_core::GitAdapter::detect_environment()
+async fn app_get_environment() -> GitEnvironment {
+    tauri::async_runtime::spawn_blocking(gybe_core::GitAdapter::detect_environment)
+        .await
+        .unwrap_or_else(|_| GitEnvironment::not_detected())
 }
 
 /// Adds a repository by path. Validates, canonicalises, and persists to DB.

@@ -3,6 +3,25 @@
 Biçim: [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/); sürümlemede
 SemVer. Sürüm notlarının ayrıntılı kaynakları `docs/RELEASE_NOTES_*.md`.
 
+## [0.2.3] — 2026-11-10
+
+### Düzeltildi
+
+- **Windows: işlem başlatırken arka planda konsol (terminal) penceresi açılması
+  ve odak kaynaklu takılmalar (saha raporu):** Gybe Windows'ta konsolsuz GUI alt
+  sistemi olarak çalışır; türetilen her `git`/`where` süreci `CREATE_NO_WINDOW`
+  bayrağı olmadan kendi konsolunu ayırıp bir an görünür oluyor, ön plana çıkarak
+  uygulamayı donmuş hissettiriyordu. Tüm süreç doğurtmaları artık tek bir
+  constructor'dan geçiyor ve bayrak Windows'ta her doğurtmaya uygulanıyor
+  (`git_command()` + regresyon testleri).
+- **Açılışta kısa pencere donması:** `app_get_environment` senkron komutuydu;
+  iki süreç doğurtan tespiti ana iş parçacığında çalıştırıyordu (GO-01
+  denetiminin kaçırdığı tek komut). Blocking havuzuna taşındı.
+
+Not: makine Windows üzerinde doğrulanamadı (geliştirme ortamı Linux); düzeltme
+mekanizma temelli ve yeni regresyon testleriyle kilitlidir — v0.2.3 paketi
+çıktığında Windows'ta ilk deneyen geri bildiriminiz değerli.
+
 ## [0.2.2] — 2026-11-09
 
 ### Eklendi

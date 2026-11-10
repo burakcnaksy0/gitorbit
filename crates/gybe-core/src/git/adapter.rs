@@ -14,10 +14,39 @@ pub struct GitAdapter;
 pub const MINIMUM_GIT_VERSION: &str = "2.23.0";
 
 impl GitAdapter {
+    /// Windows'ta Gybe GUI alt sistemi (`windows_subsystem = "windows"`) çalışır.
+    /// Bu moddan konsol çocuk süreci (git.exe, where.exe) `CREATE_NO_WINDOW` olmadan
+    /// türetilirse Windows her çağrı için yeni bir konsol ayırıp bir an görünür kılar:
+    /// kullanıcı bunu "işlem yaparken arkada terminal açılıyor" olarak görür; konsolun
+    /// anlık ön-plan odaklanması da uygulamada donma hissi üretirdi (v0.2.2 saha
+    /// raporu). stdout/stderr zaten pipe/null olduğundan bayrağın yan etkisi yoktur;
+    /// unix'te no-op.
+    fn hide_console(cmd: &mut Command) {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        #[cfg(not(windows))]
+        let _ = cmd;
+    }
+
+    /// Tüm `git` doğurtmalarının TEK constructor'u. `hide_console` burada garanti
+    /// edilir; yeni bir yürütme noktası bayrağı unutamaz (Windows konsol flaşı
+    /// regresyonu buradan gelemez).
+    fn git_command() -> Command {
+        let mut cmd = Command::new("git");
+        Self::hide_console(&mut cmd);
+        cmd
+    }
+
     /// Detects Git CLI presence, version, and location on the host machine.
     pub fn detect_environment() -> GitEnvironment {
         let which_cmd = if cfg!(windows) { "where" } else { "which" };
-        let path_output = Command::new(which_cmd).arg("git").output();
+        let mut which = Command::new(which_cmd);
+        Self::hide_console(&mut which);
+        let path_output = which.arg("git").output();
 
         let executable_path = match path_output {
             Ok(out) if out.status.success() => {
@@ -31,7 +60,7 @@ impl GitAdapter {
             _ => None,
         };
 
-        let version_output = Command::new("git").arg("--version").output();
+        let version_output = Self::git_command().arg("--version").output();
 
         match version_output {
             Ok(out) if out.status.success() => {
@@ -53,13 +82,7 @@ impl GitAdapter {
                     meets_minimum,
                 }
             }
-            _ => GitEnvironment {
-                installed: false,
-                version: None,
-                executable_path: None,
-                minimum_version: Some(MINIMUM_GIT_VERSION.to_string()),
-                meets_minimum: false,
-            },
+            _ => GitEnvironment::not_detected(),
         }
     }
 
@@ -101,7 +124,7 @@ impl GitAdapter {
         }
 
         // Run: git rev-parse --show-toplevel
-        let output = Command::new("git")
+        let output = Self::git_command()
             .arg("-C")
             .arg(path)
             .args(["rev-parse", "--show-toplevel"])
@@ -120,7 +143,7 @@ impl GitAdapter {
         let root_path = PathBuf::from(raw_root);
 
         // Bare repositories have no working tree; the MVP does not support them.
-        if let Ok(bare) = Command::new("git")
+        if let Ok(bare) = Self::git_command()
             .arg("-C")
             .arg(path)
             .args(["rev-parse", "--is-bare-repository"])
@@ -171,7 +194,7 @@ impl GitAdapter {
         envs: &[(&str, &str)],
         timeout: Option<Duration>,
     ) -> Result<std::process::Output, CommandError> {
-        let mut cmd = Command::new("git");
+        let mut cmd = Self::git_command();
         cmd.arg("-C").arg(repo_dir);
         for (k, v) in envs {
             cmd.env(k, v);
@@ -185,7 +208,7 @@ impl GitAdapter {
         args: &[&str],
         timeout: Option<Duration>,
     ) -> Result<std::process::Output, CommandError> {
-        let mut cmd = Command::new("git");
+        let mut cmd = Self::git_command();
         cmd.arg("-C").arg(repo_dir).args(args);
         Self::run_cmd(cmd, timeout)
     }
@@ -201,7 +224,7 @@ impl GitAdapter {
         cap: usize,
         timeout: Duration,
     ) -> Result<(std::process::Output, bool, usize), CommandError> {
-        let mut cmd = Command::new("git");
+        let mut cmd = Self::git_command();
         cmd.arg("-C").arg(repo_dir);
         cmd.args(args);
 
@@ -415,6 +438,40 @@ impl GitAdapter {
 
     #[cfg(not(unix))]
     fn kill_process_group(_pid: u32) {}
+}
+
+#[cfg(test)]
+mod spawn_tests {
+    use super::*;
+
+    /// v0.2.3 regresyon (Windows konsol flaşı): git doğurtmaları TEK constructor'dan
+    /// (`git_command`) geçer ve `hide_console` Windows'ta CREATE_NO_WINDOW (0x08000000)
+    /// bayrağını uygular. Bayrak değerini CreateProcess reddetse bu test Windows'ta
+    /// patlar; unix'te constructor'ın davranışı bozmadığını kanıtlar.
+    #[test]
+    fn git_command_runs_with_no_window_flag() {
+        let out = GitAdapter::git_command()
+            .arg("--version")
+            .output()
+            .expect("git --version yürütülemedi (CREATE_NO_WINDOW geçersiz olabilir)");
+        assert!(out.status.success());
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(stdout.starts_with("git version"), "beklenmedik: {stdout}");
+    }
+
+    /// `hide_console` ham Command'i de sarmalar (detect_environment'ın which/where
+    /// doğurtması gibi): bayrak uygulandıktan sonra süreç sağlıklı yürümeli.
+    #[test]
+    fn hide_console_keeps_child_io_working() {
+        let mut cmd = Command::new("git");
+        GitAdapter::hide_console(&mut cmd);
+        let out = cmd
+            .args(["rev-parse", "--git-dir"])
+            .current_dir(std::env::temp_dir())
+            .output();
+        // Temp dizin git deposu olmayabilir; önemli olan doğurtmanın kendisi.
+        let _ = out.expect("spawn başarısız — bayrak CreateProcess'i kırıyordu");
+    }
 }
 
 #[cfg(all(test, unix))]

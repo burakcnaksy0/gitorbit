@@ -11,6 +11,20 @@ pub struct GitEnvironment {
     pub meets_minimum: bool,
 }
 
+impl GitEnvironment {
+    /// Git bulunamadığında / tespit yarım kaldığında (spawn_blocking düşerse)
+    /// dönen güvenli varsayılan.
+    pub fn not_detected() -> Self {
+        Self {
+            installed: false,
+            version: None,
+            executable_path: None,
+            minimum_version: Some(crate::git::adapter::MINIMUM_GIT_VERSION.to_string()),
+            meets_minimum: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AppInfo {
     pub name: String,

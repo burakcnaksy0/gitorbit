@@ -1619,7 +1619,7 @@ dependencies = [
 
 [[package]]
 name = "gybe"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "gybe-core",
  "serde",
@@ -1634,7 +1634,7 @@ dependencies = [
 
 [[package]]
 name = "gybe-core"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "chrono",
  "keyring",

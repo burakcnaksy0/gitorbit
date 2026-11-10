@@ -6,7 +6,7 @@
 > account management into a single window — without your data ever leaving
 > the machine.
 >
-> **Status:** v0.2.2 · **License:** MIT · **Platforms:** Linux (AppImage/.deb)
+> **Status:** v0.2.3 · **License:** MIT · **Platforms:** Linux (AppImage/.deb)
 > · macOS (universal .dmg) · Windows (.exe) — macOS/Windows packages are
 > unsigned; first-launch instructions ship in the release text
 >
@@ -351,6 +351,7 @@ Gybe/
 | **v0.2**    | Daily use (12/12)               | ignore + stash, auto-fetch + OS notifications + controlled amend, command palette + drag-and-drop, commit graph, conflict band + sync-all, pin + onboarding                                                                                                                                                    |
 | **v0.2.1**  | Security + audit + distribution | Transparent token refresh via refresh token; all audit findings (GO/CB/R) closed in 9 work packages (perf, data-loss gates, races, CSP, worktree ignore, focus a11y); tag-triggered Linux AppImage/.deb release channel                                                                                        |
 | **v0.2.2**  | Cross-platform distribution     | Same release now also ships an unsigned **universal .dmg** (Apple Silicon + Intel) and a Windows **NSIS .exe**; bilingual first-launch guide (Gatekeeper/SmartScreen) appended to every release body; release creation rebuilt on `gh` so the body is the CHANGELOG slice (v0.2.1's showed the commit message) |
+| **v0.2.3**  | Windows polish                  | Console (terminal) window flashing and focus-driven stutter fixed on Windows: every spawned git/where process now runs with `CREATE_NO_WINDOW` through a single spawn constructor; startup environment probe moved off the main thread                                                                         |
 | **2026-11** | Rename                          | Project renamed **GitOrbit → Gybe** (name collision with an existing open-source Git client of the same name). Same product and codebase; the keyring service name and data dir changed, so existing installs need a one-time GitHub re-login and repo re-add                                                  |
 
 ---

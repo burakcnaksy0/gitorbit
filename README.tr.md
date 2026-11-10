@@ -5,7 +5,7 @@
 > Yerel Git iş akışlarını ve GitHub hesap yönetimini, hiçbir verini dışarıda
 > bırakmadan tek pencerede toplayan, açık kaynaklı masaüstü uygulaması.
 >
-> **Durum:** v0.2.2 · **Lisans:** MIT · **Platformlar:** Linux (AppImage/.deb)
+> **Durum:** v0.2.3 · **Lisans:** MIT · **Platformlar:** Linux (AppImage/.deb)
 > · macOS (universal .dmg) · Windows (.exe) — macOS/Windows paketleri
 > **imzasız**; ilk açılış talimatları Release metninde
 >
@@ -342,6 +342,7 @@ Gybe/
 | **v0.2**    | Günlük kullanım (12/12)               | ignore + stash, auto-fetch + OS bildirimi + kontrollü amend, komut paleti + sürükle-bırak, commit grafiği, çakışma bandı + tümünü-eşitle, pin + onboarding                                                                                                                                                                          |
 | **v0.2.1**  | Güvenlik tazeleme + denetim + dağıtım | Refresh-token ile şeffaf token yenileme; GO/CB/R kimlikli denetim bulgularının 9 iş paketinde kapatılması (perf, veri kaybı kapıları, yarış koşulları, CSP, worktree ignore, odak erişilebilirliği); tag tetiklikli Linux AppImage/.deb release kanalı                                                                              |
 | **v0.2.2**  | Çapraz platform dağıtım               | Aynı release artık imzasız **universal .dmg** (Apple Silicon + Intel) ve Windows **NSIS .exe** de içeriyor; her release gövdesine iki dilli ilk-açılış (Gatekeeper/SmartScreen) rehberi otomatik ekleniyor; release oluşturma `gh` üzerine yeniden kuruldu (gövde artık CHANGELOG dilimi)                                           |
+| **v0.2.3**  | Windows cilası                        | Windows'ta işlem sırasında arka planda konsol (terminal) penceresi açılması ve odak kaynaklu takılmalar düzeltildi: her git/where süreci tek doğurma constructor'ı üzerinden `CREATE_NO_WINDOW` ile yürüyor; açılışta ortam tespiti ana iş parçacığından alındı                                                                     |
 | **2026-11** | İsim değişikliği                      | Proje **GitOrbit → Gybe** olarak yeniden adlandırıldı (GitHub'daki aynı adlı açık kaynak Git istemcisiyle çakışma nedeniyle). Ürün ve kod tabanı aynıdır; keyring hizmet adı (`gitorbit→gybe`) ve veri dizini değiştiği için mevcut kurulumlarda GitHub hesabının bir kez yeniden bağlanması ve depoların bir kez eklenmesi gerekir |
 
 ---
